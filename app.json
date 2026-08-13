@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "growmax-app",
+    "slug": "growmax-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/secondLogo.png",
+    "scheme": "growmaxapp",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#1B5E3F",
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "bundleIdentifier": "com.growmax.engineers",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/secondLogo.png",
+        "backgroundImage": "./assets/images/secondLogo.png",
+        "monochromeImage": "./assets/images/secondLogo.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.growmax.engineers"
+    },
+    "web": {
+      "output": "server",
+      "favicon": "./assets/images/secondLogo.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "@logrocket/react-native",
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 25
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a454f0e6-fe18-4e05-8537-0e7ed68f2b4a"
+      }
+    }
+  }
+}

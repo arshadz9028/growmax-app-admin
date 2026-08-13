@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "843614337119",
+    "project_id": "growmax-8c525",
+    "storage_bucket": "growmax-8c525.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:843614337119:android:dcf193b1d6da0b358a43ea",
+        "android_client_info": {
+          "package_name": "com.growmax.engineers"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9AVubvafZMhziqQPiB4_utoqWdWDfl0g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

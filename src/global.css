@@ -1,0 +1,9 @@
+:root {
+  --font-display: "Poppins", "Segoe UI", sans-serif;
+  --font-mono:
+    "Poppins", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  --font-rounded:
+    "Poppins", "SF Pro Rounded", "Hiragino Maru Gothic ProN", sans-serif;
+  --font-serif: "Poppins", Georgia, "Times New Roman", serif;
+}
