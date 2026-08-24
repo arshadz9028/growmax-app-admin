@@ -1,14 +1,15 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   RefreshControl,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -17,706 +18,570 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
 
-const COLORS = {
+const C = {
   page: "#EFF4FB",
-  surface: "#FFFFFF",
-  surfaceAlt: "#F8FAFC",
+  surface: "#FFF",
+  alt: "#F8FAFC",
   text: "#0F172A",
   muted: "#64748B",
   faint: "#94A3B8",
   border: "#D8E3F0",
   brand: "#1E5464",
-  brandDark: "#102A43",
+  dark: "#102A43",
   blue: "#657EEA",
   blueSoft: "#EEF2FF",
-  success: "#10B981",
-  successSoft: "#ECFDF5",
+  green: "#10B981",
+  greenSoft: "#ECFDF5",
   amber: "#F59E0B",
   amberSoft: "#FFFBEB",
-  danger: "#EF4444",
-  dangerSoft: "#FEF2F2",
+  red: "#EF4444",
+  redSoft: "#FEF2F2",
 };
-
-const TECHNICIANS_API_PATH = "/api/admin/technicians";
-const MONTH_VISITS_API_PATH = (monthKey) =>
-  `/api/admin/visits?month=${encodeURIComponent(monthKey)}`;
-const ASSIGN_VISIT_API_PATH = (visitId) =>
-  `/api/admin/visits/${visitId}/assign`;
-
-const getTechnicianId = (technician) =>
-  technician?._id ||
-  technician?.id ||
-  technician?.technicianId ||
-  technician?.userId ||
-  "";
-const getTechnicianName = (technician) =>
-  technician?.fullName ||
-  technician?.name ||
-  technician?.username ||
-  technician?.technicianName ||
-  "Unnamed technician";
-const getMonthKey = (date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-const addMonths = (date, amount) => {
-  const next = new Date(date);
-  next.setMonth(next.getMonth() + amount);
-  return next;
-};
-const formatMonth = (date) =>
-  date.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-const formatDate = (value) => {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Not available"
-    : date.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-};
-const getInitials = (name) =>
-  String(name || "T")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-function getList(payload, keys) {
-  if (Array.isArray(payload)) return payload;
-  for (const key of keys) {
-    const value = key
-      .split(".")
-      .reduce((object, part) => object?.[part], payload);
-    if (Array.isArray(value)) return value;
-  }
-  return [];
+const TECHS = "/api/admin/technicians",
+  MONTH = (key) => `/api/admin/visits?month=${encodeURIComponent(key)}`,
+  ASSIGN = (id) => `/api/admin/visits/${id}/assign`,
+  RESPONSES = (id) => `${TECHS}?technicianId=${encodeURIComponent(id)}`,
+  REVIEW = (id) =>
+    `/api/admin/technicians/${encodeURIComponent(id)}/assigned-visits/review`;
+const id = (x) => x?._id || x?.id || x?.technicianId || x?.userId || "",
+  name = (x) => x?.fullName || x?.name || x?.username || "Unnamed technician",
+  monthKey = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+  addMonth = (d, n) => {
+    const x = new Date(d);
+    x.setMonth(x.getMonth() + n);
+    return x;
+  },
+  fmtMonth = (d) =>
+    d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
+  fmtDate = (v) => {
+    const d = new Date(v);
+    return !v || Number.isNaN(d)
+      ? "Not available"
+      : d.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+  },
+  initials = (x) =>
+    String(x || "T")
+      .split(/\s+/)
+      .map((a) => a[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+function list(p) {
+  return Array.isArray(p)
+    ? p
+    : p?.technicians || p?.data?.technicians || p?.data || p?.users || [];
 }
-
-function normalizeTechnicians(payload) {
-  return getList(payload, ["technicians", "data.technicians", "data", "users"])
-    .filter(Boolean)
-    .map((technician, index) => ({
-      ...technician,
-      _localId: String(getTechnicianId(technician) || `technician-${index}`),
-      assignedVisits: Array.isArray(technician?.assignedVisits)
-        ? technician.assignedVisits
-        : [],
-    }));
+function normalizeTechs(p) {
+  return (Array.isArray(list(p)) ? list(p) : []).map((t, i) => ({
+    ...t,
+    _localId: String(id(t) || `t-${i}`),
+    assignedVisits: Array.isArray(t.assignedVisits) ? t.assignedVisits : [],
+  }));
 }
-
-/* Handles flat visits and request records containing a nested visits array. */
-function normalizeVisits(payload) {
-  const source = getList(payload, [
-    "visits",
-    "data.visits",
-    "data.data.visits",
-    "result.visits",
-    "data",
-    "requests",
-    "applications",
-  ]);
-  const rows = source.flatMap((record) => {
-    const nested =
-      record?.visits ||
-      record?.selectedVisits ||
-      record?.scheduledVisits ||
-      record?.visitSlots;
-    return Array.isArray(nested)
-      ? nested.map((visit) => ({ parent: record, visit }))
-      : [{ parent: {}, visit: record }];
-  });
-
-  return rows.map(({ parent, visit }, index) =>
-    normalizeVisit(visit, index, parent),
-  );
-}
-
-function normalizeVisit(visit, index, parent = {}, forcedTechnician = null) {
-  const request =
-    visit?.request ||
-    visit?.serviceRequest ||
-    parent?.request ||
-    parent?.serviceRequest ||
-    {};
-  const consumer =
-    visit?.consumer ||
-    visit?.customer ||
-    request?.consumer ||
-    request?.customer ||
-    parent?.consumer ||
-    parent?.customer ||
-    {};
-  const selected =
-    visit?.selectedVisit ||
-    visit?.visit ||
-    parent?.selectedVisit ||
-    parent?.visit ||
-    {};
-  const management =
-    visit?.consumerManagement ||
-    parent?.consumerManagement ||
-    request?.consumerManagement ||
-    {};
-  const id =
-    visit?._visitId ||
-    visit?._id ||
-    visit?.id ||
-    visit?.visitId ||
-    `${visit?.requestId || request?._id || parent?._id || "visit"}-${visit?.visitIndex ?? index}`;
-
+function normalizeVisit(v, i, t) {
   return {
-    ...parent,
-    ...visit,
-    _visitId: String(id),
-    _visitIndex:
-      visit?._visitIndex ??
-      visit?.visitIndex ??
-      selected?.visitIndex ??
-      parent?.visitIndex ??
-      index,
-    _requestId:
-      visit?._requestId ||
-      visit?.requestId ||
-      request?._id ||
-      parent?._id ||
-      visit?.applicationId ||
-      "",
+    ...v,
+    _visitId: String(
+      v?._visitId ||
+        v?.visitId ||
+        v?._id ||
+        v?.id ||
+        `${v?.requestId || "visit"}-${v?.visitIndex ?? i}`,
+    ),
+    _visitIndex: v?._visitIndex ?? v?.visitIndex ?? i,
+    _requestId: v?._requestId || v?.requestId || "",
     _customerName:
-      visit?._customerName ||
-      visit?.consumerName ||
-      visit?.customerName ||
-      visit?.fullName ||
-      consumer?.fullName ||
-      consumer?.name ||
-      request?.fullName ||
-      visit?.user?.fullName ||
-      visit?.user?.username ||
+      v?._customerName ||
+      v?.consumerName ||
+      v?.customerName ||
+      v?.fullName ||
       "Unnamed customer",
     _mobile:
-      visit?._mobile ||
-      visit?._mobileNumber ||
-      visit?.mobileNumber ||
-      visit?.mobile ||
-      visit?.phone ||
-      consumer?.mobileNumber ||
-      consumer?.phone ||
-      request?.mobileNumber ||
-      request?.phone ||
+      v?._mobile ||
+      v?.mobileNumber ||
+      v?.mobile ||
+      v?.phone ||
       "Mobile not available",
     _consumerNumber:
-      visit?._consumerNumber ||
-      visit?.consumerNumber ||
-      visit?.consumerNo ||
-      management?.userCode ||
-      consumer?.consumerNumber ||
+      v?._consumerNumber ||
+      v?.consumerNumber ||
+      v?.consumerNo ||
       "Not assigned",
     _serviceName:
-      visit?._serviceName ||
-      visit?.serviceName ||
-      visit?.service?.name ||
-      request?.serviceName ||
-      visit?.name ||
-      "Service visit",
-    _date:
-      visit?._date ||
-      visit?.dateOfVisit ||
-      visit?.date ||
-      visit?.visitDate ||
-      visit?.scheduledDate ||
-      visit?.scheduledFor ||
-      selected?.date ||
-      selected?.visitDate ||
-      parent?.date ||
-      parent?.visitDate ||
-      null,
-    _status:
-      visit?._status ||
-      visit?.status ||
-      selected?.status ||
-      visit?.visitStatus ||
-      "Pending",
+      v?._serviceName || v?.serviceName || v?.service?.name || "Service visit",
+    _date: v?._date || v?.dateOfVisit || v?.date || v?.visitDate || null,
     _location:
-      visit?._location ||
-      visit?.locationAddress ||
-      visit?.location ||
-      visit?.address ||
-      consumer?.address ||
-      request?.address ||
-      [visit?.city, visit?.state].filter(Boolean).join(", ") ||
+      v?._location ||
+      v?.locationAddress ||
+      v?.location ||
+      v?.address ||
       "Location not available",
+    _status: v?._status || v?.status || "UpComing",
+    _reviewStatus: v?._reviewStatus || v?.reviewStatus || "",
     _assignedTechnicianId:
-      visit?._assignedTechnicianId ||
-      visit?.assignedTechnicianId ||
-      visit?.technicianId ||
-      visit?.technician?._id ||
-      selected?.assignedTechnicianId ||
-      getTechnicianId(forcedTechnician),
+      v?._assignedTechnicianId || v?.assignedTechnicianId || id(t),
     _assignedTechnicianName:
-      visit?._assignedTechnicianName ||
-      visit?.assignedTechnicianName ||
-      visit?.technicianName ||
-      visit?.technician?.fullName ||
-      selected?.assignedTechnicianName ||
-      (forcedTechnician ? getTechnicianName(forcedTechnician) : ""),
+      v?._assignedTechnicianName || v?.assignedTechnicianName || name(t),
   };
 }
-
-/* assignedVisits comes directly from each technician returned by TECHNICIANS_API_PATH. */
-function normalizeAssignedVisits(assignedVisits, technician) {
-  return (Array.isArray(assignedVisits) ? assignedVisits : [])
+function normalizeVisits(p, t) {
+  return (Array.isArray(p) ? p : p?.visits || p?.data?.visits || p?.data || [])
     .filter(Boolean)
-    .map((visit, index) => normalizeVisit(visit, index, {}, technician));
+    .map((v, i) => normalizeVisit(v, i, t));
 }
-
-function MiniInfo({ icon, value, label }) {
+function Badge({ text }) {
+  let x = String(text).toLowerCase(),
+    p =
+      x === "approved"
+        ? [C.green, C.greenSoft]
+        : x === "rejected"
+          ? [C.red, C.redSoft]
+          : x.includes("pending")
+            ? [C.amber, C.amberSoft]
+            : [C.blue, C.blueSoft];
   return (
-    <View style={styles.miniInfo}>
-      <Ionicons name={icon} size={14} color={COLORS.blue} />
-      <Text style={styles.miniValue} numberOfLines={1}>
+    <Text style={[s.badge, { color: p[0], backgroundColor: p[1] }]}>
+      {text}
+    </Text>
+  );
+}
+function Mini({ icon, value, label }) {
+  return (
+    <View style={s.mini}>
+      <Ionicons name={icon} size={14} color={C.blue} />
+      <Text style={s.miniV} numberOfLines={1}>
         {value}
       </Text>
-      <Text style={styles.miniLabel}>{label}</Text>
+      <Text style={s.miniL}>{label}</Text>
     </View>
   );
 }
-
-function State({
-  title,
-  text,
-  icon = "calendar-outline",
-  loading = false,
-  retry,
-}) {
+function State({ title, text, loading, retry }) {
   return (
-    <View style={styles.state}>
+    <View style={s.state}>
       {loading ? (
-        <ActivityIndicator color={COLORS.brand} />
+        <ActivityIndicator color={C.brand} />
       ) : (
-        <Ionicons name={icon} size={28} color={COLORS.brand} />
+        <Ionicons name="calendar-outline" size={27} color={C.brand} />
       )}
-      <Text style={styles.stateTitle}>{title}</Text>
-      <Text style={styles.stateText}>{text}</Text>
+      <Text style={s.stateT}>{title}</Text>
+      <Text style={s.stateP}>{text}</Text>
       {retry ? (
-        <Pressable style={styles.retry} onPress={retry}>
-          <Text style={styles.retryText}>Try again</Text>
+        <Pressable style={s.retry} onPress={retry}>
+          <Text style={s.whiteText}>Try again</Text>
         </Pressable>
       ) : null}
     </View>
   );
 }
-
-function TechnicianCard({ technician, visitCount, onOpen }) {
-  const active = technician?.active !== false && technician?.blocked !== true;
+function TechCard({ tech, onOpen }) {
+  let active = tech.active !== false && !tech.blocked;
   return (
-    <Pressable style={styles.technicianCard} onPress={onOpen}>
-      <View
-        style={[
-          styles.rail,
-          { backgroundColor: active ? COLORS.success : COLORS.danger },
-        ]}
-      />
-      <View style={styles.rowBetween}>
-        <View style={styles.personRow}>
+    <Pressable style={s.card} onPress={() => onOpen(tech)}>
+      <View style={[s.rail, { backgroundColor: active ? C.green : C.red }]} />
+      <View style={s.row}>
+        <View style={s.person}>
           <View
             style={[
-              styles.avatar,
-              {
-                backgroundColor: active
-                  ? COLORS.successSoft
-                  : COLORS.dangerSoft,
-              },
+              s.avatar,
+              { backgroundColor: active ? C.greenSoft : C.redSoft },
             ]}
           >
             <Text
-              style={{
-                color: active ? COLORS.success : COLORS.danger,
-                fontWeight: "900",
-              }}
+              style={{ color: active ? C.green : C.red, fontWeight: "900" }}
             >
-              {getInitials(getTechnicianName(technician))}
+              {initials(name(tech))}
             </Text>
           </View>
-          <View style={styles.flex}>
-            <Text style={styles.name}>{getTechnicianName(technician)}</Text>
-            <Text style={styles.secondary}>
-              {technician?.mobileNumber || technician?.phone || "No mobile"} ·{" "}
-              {technician?.city || "No city"}
+          <View>
+            <Text style={s.title}>{name(tech)}</Text>
+            <Text style={s.sub}>
+              {tech.mobileNumber || "No mobile"} · {tech.city || "No city"}
             </Text>
           </View>
         </View>
-        <Text
-          style={[
-            styles.badge,
-            {
-              color: active ? COLORS.success : COLORS.danger,
-              backgroundColor: active ? COLORS.successSoft : COLORS.dangerSoft,
-            },
-          ]}
-        >
-          {active ? "Active" : "Blocked"}
-        </Text>
+        <Badge text={active ? "Active" : "Blocked"} />
       </View>
-      <View style={styles.miniGrid}>
-        <MiniInfo
+      <View style={s.grid}>
+        <Mini
           icon="mail-outline"
-          value={technician?.email || "No email"}
+          value={tech.email || "No email"}
           label="Email"
         />
-        <MiniInfo
-          icon="calendar-outline"
-          value={formatDate(technician?.createdAt)}
-          label="Joined"
-        />
-        <MiniInfo
-          icon="map-outline"
-          value={String(visitCount)}
+        <Mini
+          icon="images-outline"
+          value={String(tech.assignedVisits.length)}
           label="Assigned visits"
         />
       </View>
-      <View style={styles.openRow}>
-        <Text style={styles.openText}>Open profile</Text>
-        <Ionicons name="chevron-forward" size={16} color={COLORS.brand} />
+      <View style={s.open}>
+        <Text style={s.openT}>Open profile</Text>
+        <Ionicons name="arrow-forward" size={15} color={C.brand} />
       </View>
     </Pressable>
   );
 }
-
-function VisitCard({
-  visit,
-  technician,
-  processingVisitId,
-  onAssign,
-  readOnly = false,
-}) {
-  const selected =
-    String(visit._assignedTechnicianId || "") ===
-    String(getTechnicianId(technician) || "");
-  const assignedToOther = Boolean(visit._assignedTechnicianId) && !selected;
-  const loading = processingVisitId === visit._visitId;
-  const color = selected
-    ? COLORS.success
-    : assignedToOther
-      ? COLORS.amber
-      : COLORS.blue;
-  const soft = selected
-    ? COLORS.successSoft
-    : assignedToOther
-      ? COLORS.amberSoft
-      : COLORS.blueSoft;
+function VisitCard({ visit, tech, onAssign, loading, readOnly }) {
+  let selected = String(visit._assignedTechnicianId) === String(id(tech));
   return (
-    <View style={styles.visitCard}>
-      <View style={[styles.rail, { backgroundColor: color }]} />
-      <View style={styles.rowBetween}>
-        <View style={styles.flex}>
-          <Text style={styles.name}>{visit._customerName}</Text>
-          <Text style={styles.secondary}>{visit._serviceName}</Text>
+    <View style={s.card}>
+      <View
+        style={[s.rail, { backgroundColor: selected ? C.green : C.blue }]}
+      />
+      <View style={s.row}>
+        <View style={s.flex}>
+          <Text style={s.title}>{visit._customerName}</Text>
+          <Text style={s.sub}>{visit._serviceName}</Text>
         </View>
-        <Text style={[styles.badge, { color, backgroundColor: soft }]}>
-          {selected ? "Assigned" : assignedToOther ? "Taken" : "Open"}
-        </Text>
+        <Badge text={selected ? "Assigned" : visit._status} />
       </View>
-      <View style={styles.miniGrid}>
-        <MiniInfo
+      <View style={s.grid}>
+        <Mini
           icon="calendar-outline"
-          value={formatDate(visit._date)}
+          value={fmtDate(visit._date)}
           label="Visit date"
         />
-        <MiniInfo
+        <Mini
           icon="key-outline"
           value={visit._consumerNumber}
           label="Consumer"
         />
-        <MiniInfo icon="call-outline" value={visit._mobile} label="Mobile" />
+        <Mini icon="call-outline" value={visit._mobile} label="Mobile" />
       </View>
-      <View style={styles.addressRow}>
-        <Ionicons name="location-outline" size={16} color={COLORS.danger} />
-        <Text style={styles.address}>{visit._location}</Text>
+      <View style={s.address}>
+        <Ionicons name="location-outline" size={16} color={C.red} />
+        <Text style={s.addr}>{visit._location}</Text>
       </View>
-      {assignedToOther ? (
-        <Text style={styles.warning}>
-          Currently assigned to{" "}
-          {visit._assignedTechnicianName || "another technician"}
-        </Text>
-      ) : null}
       {!readOnly ? (
         <Pressable
-          style={[
-            styles.assignButton,
-            selected && styles.assignDone,
-            loading && styles.disabled,
-          ]}
+          style={[s.primary, loading && s.disabled]}
           onPress={() => onAssign(visit)}
-          disabled={selected || loading}
+          disabled={loading || selected}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
+            <ActivityIndicator color="#fff" />
           ) : (
-            <Ionicons
-              name={
-                selected ? "checkmark-circle-outline" : "person-add-outline"
-              }
-              size={17}
-              color="#FFFFFF"
-            />
+            <Text style={s.whiteText}>
+              {selected ? "Assigned to this technician" : "Assign visit"}
+            </Text>
           )}
-          <Text style={styles.assignText}>
-            {selected
-              ? "Assigned to this technician"
-              : assignedToOther
-                ? "Reassign visit"
-                : "Assign visit"}
-          </Text>
         </Pressable>
       ) : null}
     </View>
   );
 }
-
-function CreateModal({
-  visible,
-  form,
-  update,
-  creating,
-  showPassword,
-  onTogglePassword,
-  onClose,
-  onCreate,
-}) {
+function ResponseCard({ visit, onReview, loading }) {
+  let submitted =
+    visit.beforePhotoUrl ||
+    visit.afterPhotoUrl ||
+    visit.issueNote ||
+    ["pending", "service/installation pending"].includes(
+      String(visit._status).toLowerCase(),
+    );
+  return submitted ? (
+    <View style={s.card}>
+      <View style={s.row}>
+        <View style={s.flex}>
+          <Text style={s.title}>{visit._customerName}</Text>
+          <Text style={s.sub}>
+            {visit._serviceName} · {fmtDate(visit._date)}
+          </Text>
+        </View>
+        <Badge text={visit._reviewStatus || visit._status} />
+      </View>
+      <View style={s.photos}>
+        <Photo label="Before" url={visit.beforePhotoUrl} />
+        <Photo label="After" url={visit.afterPhotoUrl} />
+      </View>
+      {visit.issueNote ? (
+        <View style={s.issue}>
+          <Ionicons name="alert-circle-outline" size={17} color={C.red} />
+          <Text style={s.issueText}>{visit.issueNote}</Text>
+        </View>
+      ) : null}
+      {!visit._reviewStatus ? (
+        <View style={s.review}>
+          <Pressable
+            style={s.reject}
+            onPress={() => onReview(visit, "Rejected")}
+            disabled={loading}
+          >
+            <Text style={{ color: C.red, fontWeight: "900" }}>Reject</Text>
+          </Pressable>
+          <Pressable
+            style={[s.approve, loading && s.disabled]}
+            onPress={() => onReview(visit, "Approved")}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={s.whiteText}>Approve</Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+}
+function Photo({ label, url }) {
+  return (
+    <View style={s.photoWrap}>
+      {url ? (
+        <Image source={{ uri: url }} style={s.photo} />
+      ) : (
+        <View style={s.noPhoto}>
+          <Ionicons name="image-outline" size={20} color={C.faint} />
+        </View>
+      )}
+      <Text style={s.photoLabel}>{label} photo</Text>
+    </View>
+  );
+}
+function Create({ visible, close, form, setForm, create, busy }) {
+  let field = (k, p, extra = {}) => (
+    <TextInput
+      value={form[k]}
+      onChangeText={(v) => setForm((x) => ({ ...x, [k]: v }))}
+      placeholder={p}
+      placeholderTextColor={C.faint}
+      style={s.input}
+      {...extra}
+    />
+  );
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
-      <View style={styles.overlay}>
-        <View style={styles.createModal}>
-          <View style={styles.modalHeader}>
+      <View style={s.overlay}>
+        <View style={s.createBox}>
+          <View style={s.row}>
             <View>
-              <Text style={styles.modalTitle}>Create technician</Text>
-              <Text style={styles.secondary}>
-                Add login credentials and contact details.
-              </Text>
+              <Text style={s.modalT}>Create technician</Text>
+              <Text style={s.sub}>Add profile and login access.</Text>
             </View>
-            <Pressable style={styles.close} onPress={onClose}>
-              <Ionicons name="close" size={18} color={COLORS.text} />
+            <Pressable style={s.close} onPress={close}>
+              <Ionicons name="close" size={18} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.form}>
-            <TextInput
-              value={form.fullName}
-              onChangeText={(value) => update("fullName", value)}
-              placeholder="Full name"
-              placeholderTextColor={COLORS.faint}
-              style={styles.input}
-            />
-            <TextInput
-              value={form.mobileNumber}
-              onChangeText={(value) => update("mobileNumber", value)}
-              placeholder="Mobile number"
-              placeholderTextColor={COLORS.faint}
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
-            <TextInput
-              value={form.email}
-              onChangeText={(value) => update("email", value)}
-              placeholder="Email address"
-              placeholderTextColor={COLORS.faint}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              style={styles.input}
-            />
-            <TextInput
-              value={form.city}
-              onChangeText={(value) => update("city", value)}
-              placeholder="City or working area"
-              placeholderTextColor={COLORS.faint}
-              style={styles.input}
-            />
-            <View style={styles.password}>
-              <TextInput
-                value={form.password}
-                onChangeText={(value) => update("password", value)}
-                placeholder="Temporary password"
-                placeholderTextColor={COLORS.faint}
-                secureTextEntry={!showPassword}
-                style={styles.passwordInput}
-              />
-              <Pressable onPress={onTogglePassword}>
-                <Ionicons
-                  name={showPassword ? "eye-off-outline" : "eye-outline"}
-                  size={19}
-                  color={COLORS.faint}
-                />
-              </Pressable>
-            </View>
+          <ScrollView contentContainerStyle={s.form}>
+            {field("fullName", "Full name")}
+            {field("mobileNumber", "Mobile number", {
+              keyboardType: "phone-pad",
+            })}
+            {field("email", "Email address", {
+              keyboardType: "email-address",
+              autoCapitalize: "none",
+            })}
+            {field("username", "Username", { autoCapitalize: "none" })}
+            {field("city", "City or working area")}
+            {field("password", "Temporary password", { secureTextEntry: true })}
           </ScrollView>
-          <View style={styles.actions}>
-            <Pressable style={styles.cancel} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.create, creating && styles.disabled]}
-              onPress={onCreate}
-              disabled={creating}
-            >
-              {creating ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.createText}>Create</Text>
-              )}
-            </Pressable>
-          </View>
+          <Pressable
+            style={[s.primary, busy && s.disabled]}
+            onPress={create}
+            disabled={busy}
+          >
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={s.whiteText}>Create technician</Text>
+            )}
+          </Pressable>
         </View>
       </View>
     </Modal>
   );
 }
-
-function ProfileModal({
-  technician,
+function Profile({
+  tech,
   visible,
-  onClose,
+  close,
+  onDelete,
+  deleting,
   view,
   setView,
-  monthDate,
-  setMonthDate,
+  month,
+  setMonth,
+  monthly,
+  assigned,
+  responses,
   loadingVisits,
-  monthlyVisits,
-  assignedVisits,
-  processingVisitId,
-  onAssign,
+  loadingResponses,
+  assign,
+  onReview,
+  processing,
+  reviewing,
+  openResponses,
 }) {
-  const showingVisits = view === "assign" || view === "check";
-  const checkMode = view === "check";
-  const displayVisits = checkMode ? assignedVisits : monthlyVisits;
+  let responseList = responses.filter(
+    (v) =>
+      v.beforePhotoUrl ||
+      v.afterPhotoUrl ||
+      v.issueNote ||
+      ["pending", "service/installation pending"].includes(
+        String(v._status).toLowerCase(),
+      ),
+  );
+  let content =
+    view === "assign" ? monthly : view === "check" ? assigned : responseList;
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
-      <View style={styles.sheetOverlay}>
-        <View style={styles.sheet}>
-          <View style={styles.modalHeader}>
-            <View style={styles.personRow}>
-              <View style={styles.avatar}>
-                <Text style={{ color: COLORS.blue, fontWeight: "900" }}>
-                  {getInitials(getTechnicianName(technician))}
+      <View style={s.sheetOverlay}>
+        <View style={s.sheet}>
+          <View style={s.row}>
+            <View style={s.person}>
+              <View style={s.avatar}>
+                <Text style={{ color: C.blue, fontWeight: "900" }}>
+                  {initials(name(tech))}
                 </Text>
               </View>
               <View>
-                <Text style={styles.modalTitle}>
-                  {getTechnicianName(technician)}
-                </Text>
-                <Text style={styles.secondary}>
-                  {technician?.email || "No email"}
-                </Text>
+                <Text style={s.modalT}>{name(tech)}</Text>
+                <Text style={s.sub}>{tech?.email || "No email"}</Text>
               </View>
             </View>
-            <Pressable style={styles.close} onPress={onClose}>
-              <Ionicons name="close" size={18} color={COLORS.text} />
-            </Pressable>
+            <View style={s.person}>
+              <Pressable
+                style={[s.deleteButton, deleting && s.disabled]}
+                onPress={onDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color={C.red} />
+                ) : (
+                  <Ionicons name="trash-outline" size={16} color={C.red} />
+                )}
+                <Text style={s.deleteText}>Delete</Text>
+              </Pressable>
+              <Pressable style={s.close} onPress={close}>
+                <Ionicons name="close" size={18} />
+              </Pressable>
+            </View>
           </View>
-          {!showingVisits ? (
-            <View style={styles.profileActions}>
-              <ActionCard
+          {view === "home" ? (
+            <ScrollView contentContainerStyle={s.actionList}>
+              <Action
                 icon="calendar-outline"
                 title="Assign visits"
-                description="View consumer visits month by month and assign this technician."
+                text="View month-wise consumer visits and assign this technician."
                 onPress={() => setView("assign")}
               />
-              <ActionCard
+              <Action
                 icon="checkbox-outline"
                 title="Check visits"
-                description="View the visits already assigned to this technician."
+                text="View all visits already assigned to this technician."
                 onPress={() => setView("check")}
               />
-            </View>
+              <Action
+                icon="images-outline"
+                title="View responses"
+                text="Review submitted photos, issue notes, and visit status."
+                onPress={openResponses}
+              />
+            </ScrollView>
           ) : (
             <>
-              <View style={styles.monthToolbar}>
-                <Pressable
-                  style={styles.monthButton}
-                  onPress={() => setView("home")}
-                >
-                  <Ionicons name="arrow-back" size={17} color={COLORS.brand} />
+              <View style={s.toolbar}>
+                <Pressable style={s.close} onPress={() => setView("home")}>
+                  <Ionicons name="arrow-back" size={17} color={C.brand} />
                 </Pressable>
-                {!checkMode ? (
+                {view === "assign" ? (
                   <Pressable
-                    style={styles.monthButton}
-                    onPress={() => setMonthDate((date) => addMonths(date, -1))}
+                    style={s.close}
+                    onPress={() => setMonth((d) => addMonth(d, -1))}
                   >
-                    <Ionicons
-                      name="chevron-back"
-                      size={17}
-                      color={COLORS.brand}
-                    />
+                    <Ionicons name="chevron-back" size={17} color={C.brand} />
                   </Pressable>
                 ) : (
-                  <View style={styles.monthSpacer} />
+                  <View style={s.spacer} />
                 )}
-                <View style={styles.monthTitleWrap}>
-                  <Text style={styles.monthLabel}>
-                    {checkMode ? "Technician visits" : "Consumer visits"}
+                <View style={s.flex}>
+                  <Text style={s.toolbarLabel}>
+                    {view === "responses"
+                      ? "TECHNICIAN RESPONSES"
+                      : view === "check"
+                        ? "ASSIGNED VISITS"
+                        : "CONSUMER VISITS"}
                   </Text>
-                  <Text style={styles.monthTitle}>
-                    {checkMode ? "Assigned visits" : formatMonth(monthDate)}
+                  <Text style={s.toolbarTitle}>
+                    {view === "assign"
+                      ? fmtMonth(month)
+                      : view === "check"
+                        ? "Assigned visits"
+                        : "Submitted responses"}
                   </Text>
                 </View>
-                {!checkMode ? (
+                {view === "assign" ? (
                   <Pressable
-                    style={styles.monthButton}
-                    onPress={() => setMonthDate((date) => addMonths(date, 1))}
+                    style={s.close}
+                    onPress={() => setMonth((d) => addMonth(d, 1))}
                   >
                     <Ionicons
                       name="chevron-forward"
                       size={17}
-                      color={COLORS.brand}
+                      color={C.brand}
                     />
                   </Pressable>
                 ) : (
-                  <View style={styles.monthSpacer} />
+                  <View style={s.spacer} />
                 )}
               </View>
               <ScrollView
-                style={styles.visitList}
-                contentContainerStyle={styles.visitContent}
+                style={s.visitList}
+                contentContainerStyle={s.visitContent}
               >
-                {!checkMode && loadingVisits ? (
+                {(view === "assign" && loadingVisits) ||
+                (view === "responses" && loadingResponses) ? (
                   <State
-                    title="Loading visits"
-                    text="Fetching current month consumer visits."
+                    title="Loading"
+                    text="Fetching technician records."
                     loading
                   />
-                ) : displayVisits.length ? (
-                  displayVisits.map((visit) => (
-                    <VisitCard
-                      key={visit._visitId}
-                      visit={visit}
-                      technician={technician}
-                      processingVisitId={processingVisitId}
-                      onAssign={onAssign}
-                      readOnly={checkMode}
-                    />
-                  ))
+                ) : content.length ? (
+                  content.map((v) =>
+                    view === "responses" ? (
+                      <ResponseCard
+                        key={v._visitId}
+                        visit={v}
+                        onReview={onReview}
+                        loading={reviewing === v._visitId}
+                      />
+                    ) : (
+                      <VisitCard
+                        key={v._visitId}
+                        visit={v}
+                        tech={tech}
+                        onAssign={assign}
+                        loading={processing === v._visitId}
+                        readOnly={view === "check"}
+                      />
+                    ),
+                  )
                 ) : (
                   <State
                     title={
-                      checkMode
-                        ? "No assigned visits"
-                        : "No visits for this month"
+                      view === "responses"
+                        ? "No technician responses"
+                        : "No visits found"
                     }
                     text={
-                      checkMode
-                        ? "No assigned visits found for this technician."
-                        : "Current month consumer visits will appear here."
+                      view === "responses"
+                        ? "Photos and issue reports will appear here."
+                        : "No records are available."
                     }
                   />
                 )}
@@ -728,826 +593,642 @@ function ProfileModal({
     </Modal>
   );
 }
-
-function ActionCard({ icon, title, description, onPress }) {
+function Action({ icon, title, text, onPress }) {
   return (
-    <View style={styles.actionCard}>
-      <Ionicons name={icon} size={22} color={COLORS.brand} />
-      <Text style={styles.modalTitle}>{title}</Text>
-      <Text style={styles.actionDescription}>{description}</Text>
-      <Pressable style={styles.assignButton} onPress={onPress}>
-        <Text style={styles.assignText}>{title}</Text>
-        <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
+    <View style={s.action}>
+      <Ionicons name={icon} size={22} color={C.brand} />
+      <Text style={s.modalT}>{title}</Text>
+      <Text style={s.sub}>{text}</Text>
+      <Pressable style={s.primary} onPress={onPress}>
+        <Text style={s.whiteText}>{title}</Text>
+        <Ionicons name="arrow-forward" size={16} color="#fff" />
       </Pressable>
     </View>
   );
 }
-
 export default function AdminManageTechnicians() {
-  const [technicians, setTechnicians] = React.useState([]);
-  const [monthlyVisits, setMonthlyVisits] = React.useState([]);
-  const [assignedVisits, setAssignedVisits] = React.useState([]);
-  const [loadingTechnicians, setLoadingTechnicians] = React.useState(true);
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [loadingVisits, setLoadingVisits] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [search, setSearch] = React.useState("");
-  const [createVisible, setCreateVisible] = React.useState(false);
-  const [selectedTechnician, setSelectedTechnician] = React.useState(null);
-  const [profileView, setProfileView] = React.useState("home");
-  const [monthDate, setMonthDate] = React.useState(new Date());
-  const [processingVisitId, setProcessingVisitId] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [form, setForm] = React.useState({
-    fullName: "",
-    mobileNumber: "",
-    email: "",
-    city: "",
-    password: "",
-  });
-  const monthKey = getMonthKey(monthDate);
-
-  const fetchTechnicians = React.useCallback(
-    async ({ isRefresh = false } = {}) => {
-      isRefresh ? setRefreshing(true) : setLoadingTechnicians(true);
-      setError("");
-      try {
-        const response = await safeFetch(getApiUrl(TECHNICIANS_API_PATH));
-        const payload = await response.json().catch(() => null);
-        console.log("Fetched technicians (raw):", payload);
-        if (!response.ok)
-          throw new Error(payload?.message || "Unable to load technicians.");
-        setTechnicians(normalizeTechnicians(payload));
-      } catch (requestError) {
-        setError(requestError?.message || "Unable to load technicians.");
-      } finally {
-        setLoadingTechnicians(false);
-        setRefreshing(false);
-      }
-    },
-    [],
-  );
-
-  const fetchMonthVisits = React.useCallback(async (key) => {
-    setLoadingVisits(true);
-    try {
-      const response = await safeFetch(getApiUrl(MONTH_VISITS_API_PATH(key)));
-      const payload = await response.json().catch(() => null);
-      console.log("Fetched month visits (raw):", key, payload);
-      if (!response.ok)
-        throw new Error(payload?.message || "Unable to load visits.");
-      setMonthlyVisits(normalizeVisits(payload));
-    } catch (requestError) {
-      Alert.alert(
-        "Visits unavailable",
-        requestError?.message || "Unable to load visits.",
-      );
-      setMonthlyVisits([]);
-    } finally {
-      setLoadingVisits(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    fetchTechnicians();
-  }, [fetchTechnicians]);
-  React.useEffect(() => {
-    if (selectedTechnician && profileView === "assign")
-      fetchMonthVisits(monthKey);
-  }, [fetchMonthVisits, monthKey, profileView, selectedTechnician]);
-
-  const filteredTechnicians = React.useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return technicians;
-    return technicians.filter((technician) =>
-      [
-        getTechnicianName(technician),
-        technician?.email,
-        technician?.mobileNumber,
-        technician?.phone,
-        technician?.city,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [search, technicians]);
-
-  const stats = React.useMemo(
-    () => ({
-      total: technicians.length,
-      active: technicians.filter(
-        (item) => item?.active !== false && item?.blocked !== true,
-      ).length,
-      assigned: technicians.reduce(
-        (total, item) =>
-          total +
-          (Array.isArray(item?.assignedVisits)
-            ? item.assignedVisits.length
-            : 0),
-        0,
-      ),
-    }),
-    [technicians],
-  );
-  const updateForm = (key, value) =>
-    setForm((current) => ({ ...current, [key]: value }));
-  const resetForm = () => {
-    setForm({
+  const [techs, setTechs] = React.useState([]),
+    [monthly, setMonthly] = React.useState([]),
+    [assigned, setAssigned] = React.useState([]),
+    [responses, setResponses] = React.useState([]),
+    [loading, setLoading] = React.useState(true),
+    [refreshing, setRefreshing] = React.useState(false),
+    [error, setError] = React.useState(""),
+    [search, setSearch] = React.useState(""),
+    [createVisible, setCreateVisible] = React.useState(false),
+    [selected, setSelected] = React.useState(null),
+    [view, setView] = React.useState("home"),
+    [month, setMonth] = React.useState(new Date()),
+    [busy, setBusy] = React.useState(false),
+    [processing, setProcessing] = React.useState(""),
+    [reviewing, setReviewing] = React.useState(""),
+    [deleting, setDeleting] = React.useState(false),
+    [loadingVisits, setLoadingVisits] = React.useState(false),
+    [loadingResponses, setLoadingResponses] = React.useState(false),
+    [form, setForm] = React.useState({
       fullName: "",
       mobileNumber: "",
       email: "",
+      username: "",
       city: "",
       password: "",
     });
-    setShowPassword(false);
-  };
-  const closeProfile = () => {
-    setSelectedTechnician(null);
-    setAssignedVisits([]);
-    setProfileView("home");
-  };
-  const openProfile = (technician) => {
-    setSelectedTechnician(technician);
-    setAssignedVisits(
-      normalizeAssignedVisits(technician?.assignedVisits, technician),
-    );
-    setMonthDate(new Date());
-    setProfileView("home");
-  };
-
-  const createTechnician = async () => {
-    const payload = {
-      fullName: form.fullName.trim(),
-      username: form.fullName.trim(),
-      mobileNumber: form.mobileNumber.trim(),
-      email: form.email.trim(),
-      city: form.city.trim(),
-      password: form.password.trim(),
-      role: "technician",
-      active: true,
-    };
-    if (
-      !payload.fullName ||
-      !payload.mobileNumber ||
-      !payload.email ||
-      !payload.password
-    )
-      return Alert.alert(
-        "Missing details",
-        "Enter name, mobile number, email, and password.",
-      );
-    setCreating(true);
+  const fetchTechs = React.useCallback(async ({ refresh = false } = {}) => {
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
     try {
-      const response = await safeFetch(getApiUrl(TECHNICIANS_API_PATH), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok)
-        throw new Error(data?.message || "Unable to create technician.");
-      const created =
-        data?.technician ||
-        data?.data?.technician ||
-        data?.data ||
-        data ||
-        payload;
-      setTechnicians((current) => [
-        normalizeTechnicians([created])[0],
-        ...current,
-      ]);
-      setCreateVisible(false);
-      resetForm();
-      Alert.alert("Technician created", "The technician profile is ready.");
-    } catch (requestError) {
-      Alert.alert(
-        "Create failed",
-        requestError?.message || "Please try again.",
-      );
+      let r = await safeFetch(getApiUrl(TECHS)),
+        p = await r.json().catch(() => null);
+      if (!r.ok || !p?.success)
+        throw Error(p?.message || "Unable to load technicians.");
+      setTechs(normalizeTechs(p));
+      setError("");
+    } catch (e) {
+      setError(e.message);
     } finally {
-      setCreating(false);
+      setLoading(false);
+      setRefreshing(false);
     }
+  }, []);
+  React.useEffect(() => {
+    fetchTechs();
+  }, [fetchTechs]);
+  React.useEffect(() => {
+    if (selected && view === "assign") {
+      setLoadingVisits(true);
+      safeFetch(getApiUrl(MONTH(monthKey(month))))
+        .then((r) => r.json())
+        .then((p) => setMonthly(normalizeVisits(p)))
+        .catch(() => setMonthly([]))
+        .finally(() => setLoadingVisits(false));
+    }
+  }, [selected, view, month]);
+  const filtered = techs.filter((t) =>
+    [name(t), t.email, t.mobileNumber, t.city]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
+  const open = (t) => {
+    setSelected(t);
+    setAssigned(normalizeVisits(t.assignedVisits, t));
+    setResponses([]);
+    setMonth(new Date());
+    setView("home");
   };
+  const close = () => {
+    setSelected(null);
+    setAssigned([]);
+    setResponses([]);
+    setView("home");
+  };
+  const deleteTechnician = () => {
+    const technicianId = id(selected);
 
-  const assignVisit = (visit) => {
-    const technicianId = getTechnicianId(selectedTechnician);
-    const technicianName = getTechnicianName(selectedTechnician);
-    const apiVisitId =
-      visit?._id || visit?.id || visit?.visitId || visit?._visitId;
-    if (!technicianId || !apiVisitId)
-      return Alert.alert(
-        "Missing details",
-        "This visit cannot be assigned because its id is unavailable.",
-      );
+    if (!technicianId) {
+      return Alert.alert("Delete failed", "This technician has no valid ID.");
+    }
+
     Alert.alert(
-      visit._assignedTechnicianId ? "Reassign visit" : "Assign visit",
-      `Assign this visit to ${technicianName}?`,
+      "Delete technician",
+      `Are you sure you want to delete ${name(selected)}? This action cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Assign",
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
-            setProcessingVisitId(visit._visitId);
+            setDeleting(true);
             try {
-              const response = await safeFetch(
-                getApiUrl(ASSIGN_VISIT_API_PATH(apiVisitId)),
-                {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    technicianId,
-                    technicianName,
-                    assignedTechnicianId: technicianId,
-                    assignedTechnicianName: technicianName,
-                    visitId: apiVisitId,
-                    visitIndex: visit._visitIndex,
-                    visitDate: visit._date,
-                    requestId: visit._requestId,
-                    consumerNumber: visit._consumerNumber,
-                    status: "Assigned",
-                    assignedAt: new Date().toISOString(),
-                  }),
-                },
+              const r = await safeFetch(getApiUrl(RESPONSES(technicianId)), {
+                method: "DELETE",
+              });
+              const p = await r.json().catch(() => null);
+
+              if (!r.ok || !p?.success) {
+                throw Error(p?.message || "Unable to delete technician.");
+              }
+
+              setTechs((current) =>
+                current.filter((technician) => id(technician) !== technicianId),
               );
-              const data = await response.json().catch(() => null);
-              if (!response.ok)
-                throw new Error(data?.message || "Unable to assign visit.");
-              const assigned = {
-                ...visit,
-                _assignedTechnicianId: technicianId,
-                _assignedTechnicianName: technicianName,
-                _status: "Assigned",
-              };
-              setMonthlyVisits((current) =>
-                current.map((item) =>
-                  item._visitId === visit._visitId ? assigned : item,
-                ),
-              );
-              setAssignedVisits((current) => [
-                ...current.filter(
-                  (item) => item._visitId !== assigned._visitId,
-                ),
-                assigned,
-              ]);
-              setSelectedTechnician((current) =>
-                current
-                  ? {
-                      ...current,
-                      assignedVisits: [
-                        ...(current.assignedVisits || []).filter(
-                          (item) =>
-                            String(item?._id || item?.id || item?.visitId) !==
-                            String(apiVisitId),
-                        ),
-                        assigned,
-                      ],
-                    }
-                  : current,
-              );
-              setTechnicians((current) =>
-                current.map((item) =>
-                  String(getTechnicianId(item)) === String(technicianId)
-                    ? {
-                        ...item,
-                        assignedVisits: [
-                          ...(item.assignedVisits || []).filter(
-                            (saved) =>
-                              String(
-                                saved?._id || saved?.id || saved?.visitId,
-                              ) !== String(apiVisitId),
-                          ),
-                          assigned,
-                        ],
-                      }
-                    : item,
-                ),
-              );
+              close();
               Alert.alert(
-                "Visit assigned",
-                "The technician has been assigned.",
+                "Technician deleted",
+                "The technician was deleted successfully.",
               );
-            } catch (requestError) {
-              Alert.alert(
-                "Assign failed",
-                requestError?.message || "Please try again.",
-              );
+            } catch (e) {
+              Alert.alert("Delete failed", e?.message || "Please try again.");
             } finally {
-              setProcessingVisitId("");
+              setDeleting(false);
             }
           },
         },
       ],
     );
   };
-
+  const fetchResponses = async () => {
+    setView("responses");
+    setLoadingResponses(true);
+    try {
+      let r = await safeFetch(getApiUrl(RESPONSES(id(selected))));
+      let p = await r.json().catch(() => null);
+      if (!r.ok || !p?.success) throw Error(p?.message);
+      setResponses(
+        normalizeVisits(
+          p?.data?.assignedVisits || p?.data || p?.assignedVisits || [],
+          selected,
+        ),
+      );
+    } catch (e) {
+      Alert.alert(
+        "Responses unavailable",
+        e?.message || "Unable to load responses.",
+      );
+      setResponses([]);
+    } finally {
+      setLoadingResponses(false);
+    }
+  };
+  const create = async () => {
+    if (!form.fullName || !form.mobileNumber || !form.email || !form.password)
+      return Alert.alert(
+        "Missing details",
+        "Enter name, mobile, email and password.",
+      );
+    setBusy(true);
+    try {
+      let r = await safeFetch(getApiUrl(TECHS), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, role: "technician", active: true }),
+        }),
+        p = await r.json().catch(() => null);
+      if (!r.ok || !p?.success) throw Error(p?.message);
+      setTechs((x) => [...x, normalizeTechs([p?.data || p])[0]]);
+      setCreateVisible(false);
+    } catch (e) {
+      Alert.alert("Create failed", e?.message || "Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const assign = async (v) => {
+    setProcessing(v._visitId);
+    try {
+      let r = await safeFetch(getApiUrl(ASSIGN(v._visitId)), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            technicianId: id(selected),
+            technicianName: name(selected),
+            visitId: v._visitId,
+            requestId: v._requestId,
+            visitIndex: v._visitIndex,
+            status: "Assigned",
+            assignedAt: new Date().toISOString(),
+          }),
+        }),
+        p = await r.json().catch(() => null);
+      if (!r.ok || !p?.success) throw Error(p?.message);
+      let x = {
+        ...v,
+        _assignedTechnicianId: id(selected),
+        _assignedTechnicianName: name(selected),
+        _status: "Assigned",
+      };
+      setAssigned((a) => [...a.filter((q) => q._visitId !== x._visitId), x]);
+    } catch (e) {
+      Alert.alert("Assign failed", e?.message || "Please try again.");
+    } finally {
+      setProcessing("");
+    }
+  };
+  const review = async (v, reviewStatus) => {
+    setReviewing(v._visitId);
+    try {
+      let r = await safeFetch(getApiUrl(REVIEW(id(selected))), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId: v._requestId,
+            visitId: v._visitId,
+            visitIndex: v._visitIndex,
+            reviewStatus,
+            reviewedAt: new Date().toISOString(),
+          }),
+        }),
+        p = await r.json().catch(() => null);
+      if (!r.ok || !p?.success) throw Error(p?.message);
+      setResponses((a) =>
+        a.map((q) =>
+          q._visitId === v._visitId ? { ...q, _reviewStatus: reviewStatus } : q,
+        ),
+      );
+    } catch (e) {
+      Alert.alert("Review failed", e?.message || "Please try again.");
+    } finally {
+      setReviewing("");
+    }
+  };
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.brandDark} />
+    <SafeAreaView style={s.safe}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        style={s.page}
+        contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => fetchTechnicians({ isRefresh: true })}
-            colors={[COLORS.brand]}
+            onRefresh={() => fetchTechs({ refresh: true })}
+            colors={[C.brand]}
           />
         }
       >
-        <LinearGradient
-          colors={[COLORS.brandDark, COLORS.brand, COLORS.blue]}
-          style={styles.hero}
-        >
-          <Text style={styles.heroTag}>Manage technicians</Text>
-          <Text style={styles.heroTitle}>
-            Create profiles and assign field visits.
+        <LinearGradient colors={[C.dark, C.brand, C.blue]} style={s.hero}>
+          <Text style={s.heroTag}>MANAGE TECHNICIANS</Text>
+          <Text style={s.heroTitle}>
+            Profiles, assignments and response review.
           </Text>
-          <Pressable
-            style={styles.heroButton}
-            onPress={() => setCreateVisible(true)}
-          >
-            <Text style={styles.heroButtonText}>Create technician</Text>
-            <Ionicons
-              name="add-circle-outline"
-              size={17}
-              color={COLORS.brandDark}
-            />
+          <Pressable style={s.heroBtn} onPress={() => setCreateVisible(true)}>
+            <Text style={s.heroBtnT}>Create technician profile</Text>
+            <Ionicons name="add-circle-outline" size={17} color={'#ffffffa1'} />
           </Pressable>
         </LinearGradient>
-        <View style={styles.stats}>
-          <Stat label="Technicians" value={stats.total} />
-          <Stat label="Active" value={stats.active} />
-          <Stat label="Assigned visits" value={stats.assigned} />
+        <View style={s.stats}>
+          <Mini
+            icon="people-outline"
+            value={String(techs.length)}
+            label="Technicians"
+          />
+          <Mini
+            icon="checkmark-circle-outline"
+            value={String(techs.filter((t) => t.active !== false).length)}
+            label="Active"
+          />
+          <Mini
+            icon="images-outline"
+            value={String(
+              techs.reduce((n, t) => n + t.assignedVisits.length, 0),
+            )}
+            label="Assigned visits"
+          />
         </View>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={17} color={COLORS.faint} />
+        <View style={s.search}>
+          <Ionicons name="search-outline" size={17} color={C.faint} />
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search technician, email, mobile, or city"
-            placeholderTextColor={COLORS.faint}
-            style={styles.searchInput}
+            placeholder="Search technician, email, mobile, city"
+            placeholderTextColor={C.faint}
+            style={s.searchInput}
           />
         </View>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.eyebrow}>Technician directory</Text>
-            <Text style={styles.sectionTitle}>Field staff profiles</Text>
-          </View>
-          <Pressable style={styles.plus} onPress={() => setCreateVisible(true)}>
-            <Ionicons name="add" size={18} color="#FFFFFF" />
+        <View style={s.section}>
+          <Text style={s.sectionT}>Field staff profiles</Text>
+          <Pressable style={s.plus} onPress={() => setCreateVisible(true)}>
+            <Ionicons name="add" size={18} color="#fff" />
           </Pressable>
         </View>
-        {loadingTechnicians ? (
+        {loading ? (
           <State
             title="Loading technicians"
-            text="Fetching technician profiles."
+            text="Fetching staff profiles."
             loading
           />
         ) : error ? (
           <State
-            icon="warning-outline"
             title="Could not load technicians"
             text={error}
-            retry={fetchTechnicians}
+            retry={fetchTechs}
           />
-        ) : filteredTechnicians.length ? (
-          filteredTechnicians.map((technician) => (
-            <TechnicianCard
-              key={technician._localId}
-              technician={technician}
-              visitCount={
-                Array.isArray(technician.assignedVisits)
-                  ? technician.assignedVisits.length
-                  : 0
-              }
-              onOpen={() => openProfile(technician)}
-            />
-          ))
         ) : (
-          <State
-            icon="person-add-outline"
-            title="No technicians found"
-            text="Create a technician profile to start assigning visits."
-          />
+          filtered.map((t) => (
+            <TechCard key={t._localId} tech={t} onOpen={open} />
+          ))
         )}
       </ScrollView>
-      <CreateModal
+      <Create
         visible={createVisible}
+        close={() => setCreateVisible(false)}
         form={form}
-        update={updateForm}
-        creating={creating}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((current) => !current)}
-        onClose={() => {
-          setCreateVisible(false);
-          resetForm();
-        }}
-        onCreate={createTechnician}
+        setForm={setForm}
+        create={create}
+        busy={busy}
       />
-      <ProfileModal
-        technician={selectedTechnician}
-        visible={Boolean(selectedTechnician)}
-        onClose={closeProfile}
-        view={profileView}
-        setView={setProfileView}
-        monthDate={monthDate}
-        setMonthDate={setMonthDate}
+      <Profile
+        tech={selected}
+        visible={!!selected}
+        close={close}
+        onDelete={deleteTechnician}
+        deleting={deleting}
+        view={view}
+        setView={setView}
+        month={month}
+        setMonth={setMonth}
+        monthly={monthly}
+        assigned={assigned}
+        responses={responses}
         loadingVisits={loadingVisits}
-        monthlyVisits={monthlyVisits}
-        assignedVisits={assignedVisits}
-        processingVisitId={processingVisitId}
-        onAssign={assignVisit}
+        loadingResponses={loadingResponses}
+        assign={assign}
+        onReview={review}
+        processing={processing}
+        reviewing={reviewing}
+        openResponses={fetchResponses}
       />
     </SafeAreaView>
   );
 }
-
-function Stat({ label, value }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{String(value)}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.page },
-  container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.page },
+  page: { flex: 1 },
+  content: { padding: 16, paddingBottom: 30 },
   hero: { borderRadius: 18, padding: 18 },
   heroTag: {
-    color: "rgba(255,255,255,.82)",
-    fontSize: 10,
+    color: "rgba(255,255,255,.75)",
+    fontSize: 9,
     fontWeight: "900",
-    textTransform: "uppercase",
+    letterSpacing: 1.2,
   },
   heroTitle: {
-    color: "#FFFFFF",
+    color: "#fff",
     fontSize: 21,
     fontWeight: "900",
-    marginTop: 8,
-    maxWidth: "85%",
+    marginTop: 7,
+    maxWidth: "86%",
   },
-  heroButton: {
+  heroBtn: {
     alignSelf: "flex-start",
+    marginTop: 18,
+    backgroundColor: C.white,
+    borderRadius: 12,
+    padding: 11,
     flexDirection: "row",
-    alignItems: "center",
     gap: 7,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 13,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    marginTop: 20,
+    alignItems: "center",
   },
-  heroButtonText: { color: COLORS.brandDark, fontWeight: "900" },
+  heroBtnT: { color: '#FFF', fontWeight: "900" },
   stats: { flexDirection: "row", gap: 8, marginVertical: 14 },
-  stat: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  statValue: { color: COLORS.brand, fontSize: 19, fontWeight: "900" },
-  statLabel: {
-    color: COLORS.muted,
-    fontSize: 9,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  searchBox: {
+  search: {
     height: 45,
-    backgroundColor: COLORS.surface,
-    borderRadius: 13,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: C.border,
+    borderRadius: 13,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
   },
-  searchInput: { flex: 1, color: COLORS.text, fontSize: 12, fontWeight: "700" },
-  sectionHeader: {
+  searchInput: { flex: 1, color: C.text, fontSize: 12, fontWeight: "700" },
+  section: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 18,
-    marginBottom: 10,
+    marginVertical: 16,
   },
-  eyebrow: {
-    color: COLORS.brand,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "900",
-    marginTop: 2,
-  },
+  sectionT: { color: C.text, fontSize: 16, fontWeight: "900" },
   plus: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: COLORS.brand,
+    backgroundColor: C.brand,
     alignItems: "center",
     justifyContent: "center",
   },
-  technicianCard: {
-    backgroundColor: COLORS.surface,
+  card: {
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 17,
-    padding: 14,
-    marginBottom: 12,
-    overflow: "hidden",
-  },
-  visitCard: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: C.border,
     borderRadius: 17,
     padding: 14,
     marginBottom: 12,
     overflow: "hidden",
   },
   rail: { position: "absolute", left: 0, top: 14, bottom: 14, width: 4 },
-  rowBetween: {
+  row: {
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 8,
   },
-  personRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  person: { flexDirection: "row", alignItems: "center", gap: 9 },
   flex: { flex: 1 },
   avatar: {
-    width: 40,
     height: 40,
+    width: 40,
     borderRadius: 13,
+    backgroundColor: C.blueSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.blueSoft,
   },
-  name: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
-  secondary: {
-    color: COLORS.muted,
-    fontSize: 10.5,
-    fontWeight: "700",
-    marginTop: 3,
-  },
+  title: { color: C.text, fontSize: 14, fontWeight: "900" },
+  sub: { color: C.muted, fontSize: 10.5, fontWeight: "700", marginTop: 3 },
   badge: {
     overflow: "hidden",
-    borderRadius: 999,
+    borderRadius: 99,
     paddingHorizontal: 8,
     paddingVertical: 5,
     fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  miniGrid: { flexDirection: "row", gap: 7, marginTop: 12 },
-  miniInfo: {
+  grid: { flexDirection: "row", gap: 7, marginTop: 12 },
+  mini: {
     flex: 1,
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 11,
+    backgroundColor: C.alt,
     borderWidth: 1,
     borderColor: "#EDF2F7",
+    borderRadius: 11,
     padding: 8,
   },
-  miniValue: {
-    color: COLORS.text,
-    fontSize: 9.5,
-    fontWeight: "900",
-    marginTop: 6,
-  },
-  miniLabel: {
-    color: COLORS.muted,
-    fontSize: 8.5,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  openRow: {
+  miniV: { color: C.text, fontSize: 10, fontWeight: "900", marginTop: 6 },
+  miniL: { color: C.muted, fontSize: 8.5, fontWeight: "800", marginTop: 2 },
+  open: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "flex-end",
-    gap: 2,
-    marginTop: 12,
-  },
-  openText: { color: COLORS.brand, fontSize: 11, fontWeight: "900" },
-  state: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 24,
     alignItems: "center",
+    gap: 3,
+    marginTop: 11,
   },
-  stateTitle: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "900",
-    marginTop: 10,
-  },
-  stateText: {
-    color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "700",
-    textAlign: "center",
-    marginTop: 5,
-  },
-  retry: {
-    backgroundColor: COLORS.brand,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginTop: 13,
-  },
-  retryText: { color: "#FFFFFF", fontWeight: "900", fontSize: 11 },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(15,23,42,.6)",
-    justifyContent: "center",
-    padding: 18,
-  },
-  createModal: {
-    maxHeight: "82%",
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    overflow: "hidden",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    padding: 14,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalTitle: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: COLORS.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  form: { padding: 14 },
-  input: {
-    height: 46,
-    backgroundColor: COLORS.surfaceAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 13,
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: "700",
-    paddingHorizontal: 12,
-    marginBottom: 10,
-  },
-  password: {
-    height: 46,
-    backgroundColor: COLORS.surfaceAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-  },
-  passwordInput: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  actions: { flexDirection: "row", gap: 10, padding: 14 },
-  cancel: {
-    flex: 1,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: COLORS.surfaceAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelText: { color: COLORS.muted, fontWeight: "900" },
-  create: {
-    flex: 1,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: COLORS.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  createText: { color: "#FFFFFF", fontWeight: "900" },
-  disabled: { opacity: 0.7 },
-  sheetOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(15,23,42,.55)",
-  },
-  sheet: {
-    height: "90%",
-    backgroundColor: COLORS.page,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  profileActions: { gap: 12, marginTop: 14 },
-  actionCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-  },
-  actionDescription: {
-    color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
-    fontWeight: "700",
-    marginTop: 5,
-  },
-  assignButton: {
-    height: 43,
-    borderRadius: 13,
-    backgroundColor: COLORS.brand,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    marginTop: 14,
-  },
-  assignDone: { backgroundColor: COLORS.success },
-  assignText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
-  monthToolbar: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  monthButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    backgroundColor: COLORS.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monthSpacer: { width: 34 },
-  monthTitleWrap: { flex: 1, alignItems: "center" },
-  monthLabel: {
-    color: COLORS.muted,
-    fontSize: 9,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  monthTitle: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  visitList: { flex: 1 },
-  visitContent: { paddingBottom: 28 },
-  addressRow: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: "#EDF2F7",
-    padding: 9,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 6,
-    marginTop: 10,
-  },
+  openT: { color: C.brand, fontSize: 11, fontWeight: "900" },
   address: {
+    backgroundColor: C.alt,
+    borderRadius: 11,
+    padding: 9,
+    marginTop: 10,
+    flexDirection: "row",
+    gap: 6,
+  },
+  addr: {
     flex: 1,
-    color: COLORS.text,
+    color: C.text,
     fontSize: 10.5,
     lineHeight: 15,
     fontWeight: "700",
   },
-  warning: {
-    color: COLORS.amber,
-    fontSize: 10,
-    fontWeight: "800",
-    marginTop: 9,
+  primary: {
+    height: 43,
+    borderRadius: 13,
+    backgroundColor: C.brand,
+    marginTop: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
   },
+  whiteText: { color: "#fff", fontSize: 11, fontWeight: "900" },
+  state: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 17,
+    padding: 27,
+    alignItems: "center",
+  },
+  stateT: { color: C.text, fontSize: 14, fontWeight: "900", marginTop: 10 },
+  stateP: { color: C.muted, fontSize: 11, textAlign: "center", marginTop: 5 },
+  retry: {
+    backgroundColor: C.brand,
+    borderRadius: 10,
+    padding: 9,
+    marginTop: 13,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 18,
+    backgroundColor: "rgba(15,23,42,.6)",
+  },
+  createBox: {
+    maxHeight: "84%",
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    padding: 14,
+  },
+  close: {
+    height: 34,
+    width: 34,
+    borderRadius: 11,
+    backgroundColor: C.alt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: C.redSoft,
+  },
+  deleteText: { color: C.red, fontSize: 10, fontWeight: "900" },
+  form: { paddingTop: 12 },
+  input: {
+    height: 45,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.alt,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    color: C.text,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 9,
+  },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(15,23,42,.56)",
+  },
+  sheet: {
+    height: "90%",
+    backgroundColor: C.page,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 16,
+  },
+  actionList: { gap: 12, paddingTop: 14 },
+  action: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 17,
+    padding: 16,
+  },
+  toolbar: {
+    marginTop: 12,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 9,
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  spacer: { width: 34 },
+  toolbarLabel: {
+    color: C.muted,
+    fontSize: 8.5,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textAlign: "center",
+  },
+  toolbarTitle: {
+    color: C.text,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "center",
+    marginTop: 2,
+  },
+  visitList: { flex: 1, marginTop: 12 },
+  visitContent: { paddingBottom: 25 },
+  photos: { flexDirection: "row", gap: 10, marginTop: 12 },
+  photoWrap: { flex: 1 },
+  photo: {
+    height: 116,
+    width: "100%",
+    borderRadius: 12,
+    backgroundColor: C.alt,
+  },
+  noPhoto: {
+    height: 116,
+    borderRadius: 12,
+    backgroundColor: C.alt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoLabel: { color: C.muted, fontSize: 9, fontWeight: "800", marginTop: 4 },
+  issue: {
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: C.redSoft,
+    borderRadius: 11,
+    padding: 10,
+    marginTop: 11,
+  },
+  issueText: { flex: 1, color: C.red, fontSize: 10.5, fontWeight: "700" },
+  review: { flexDirection: "row", gap: 9, marginTop: 12 },
+  reject: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F0CACA",
+    backgroundColor: C.redSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  approve: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: C.green,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  disabled: { opacity: 0.65 },
 });

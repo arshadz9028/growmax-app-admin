@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "growmax-app",
-    "slug": "growmax-app",
+    "name": "Growmax Admin",
+    "slug": "GrowmaxAdmin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/secondLogo.png",
@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "splash": {
       "backgroundColor": "#1B5E3F",
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/secondLogo.png",
       "resizeMode": "contain"
     },
     "ios": {
@@ -48,8 +48,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a454f0e6-fe18-4e05-8537-0e7ed68f2b4a"
+        "projectId": "75f65efb-c203-49c5-ad25-dcc4a3a3f140"
       }
-    }
+    },
+    "owner": "dev_786"
   }
 }

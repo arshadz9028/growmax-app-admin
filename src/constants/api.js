@@ -1,6 +1,7 @@
 // API Base URL - you'll need to replace this with your actual hosted API URL
 // For development, you can use your local IP (e.g., http://192.168.1.108:8081)
-export const API_BASE_URL = "http://192.168.16.108:5000"
+export const API_BASE_URL = "https://growmax-backend-node.vercel.app"
+// process.env.NODE_API_URL
 // export const API_BASE_URL = "https://growmax-backend.onrender.com"
 // "https://your-api-domain.com";
 

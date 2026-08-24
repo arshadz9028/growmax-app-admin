@@ -108,7 +108,7 @@ export default function AppTabs() {
       <Tabs.Screen name="new-request" options={hiddenScreenOptions} />
       <Tabs.Screen name="complaints" options={hiddenScreenOptions} />
       <Tabs.Screen name="active-services" options={hiddenScreenOptions} />
-      <Tabs.Screen name="login" options={hiddenScreenOptions} />
+      <Tabs.Screen name="notifications" options={hiddenScreenOptions} />
       {/* <Tabs.Screen name="grow-cleaning" options={hiddenScreenOptions} />
       <Tabs.Screen name="service-schedule" options={hiddenScreenOptions} />
       <Tabs.Screen name="solar-services" options={hiddenScreenOptions} />

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -416,7 +417,7 @@ function AdminHomeUI() {
 
             <Pressable
               style={styles.headerIconButton}
-              onPress={() => router.push("/notification")}
+              onPress={() => router.push("/notifications")}
             >
               <Ionicons
                 name="notifications-outline"

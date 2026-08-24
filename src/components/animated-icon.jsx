@@ -89,7 +89,7 @@ export function AnimatedSplashOverlay() {
 
         {/* Bottom green section */}
         <View style={styles.bottomSection}>
-          <Text style={styles.tagline}>Powering India's Green Future 🌱</Text>
+          <Text style={styles.tagline}>Powering India&apos;s Green Future 🌱</Text>
           <Text style={styles.description}>
             Rooftop solar · Smart energy · Expert engineers
           </Text>
