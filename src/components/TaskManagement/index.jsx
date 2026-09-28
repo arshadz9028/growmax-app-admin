@@ -1,21 +1,22 @@
+/* eslint-disable react-hooks/refs */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-  Alert,
-  Animated,
-  Easing,
-  LayoutAnimation,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  UIManager,
-  View,
+    Alert,
+    Animated,
+    Easing,
+    LayoutAnimation,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    UIManager,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -264,7 +265,9 @@ function TaskCard({ task, index, onDelete }) {
         },
       ]}
     >
-      <View style={[styles.taskAccentRail, { backgroundColor: priority.color }]} />
+      <View
+        style={[styles.taskAccentRail, { backgroundColor: priority.color }]}
+      />
 
       <View pointerEvents="none" style={styles.taskTexture}>
         <View style={styles.taskTextureLineOne} />
@@ -596,10 +599,12 @@ function TaskManagement() {
               </View>
             </View>
 
-            <Text style={styles.heroTitle}>Plan work. Rank urgency. Move fast.</Text>
+            <Text style={styles.heroTitle}>
+              Plan work. Rank urgency. Move fast.
+            </Text>
             <Text style={styles.heroSubtitle}>
-              Create tasks, assign priority, and keep urgent service work visible
-              without crowding the screen.
+              Create tasks, assign priority, and keep urgent service work
+              visible without crowding the screen.
             </Text>
 
             <View style={styles.heroStatsRow}>
@@ -633,7 +638,11 @@ function TaskManagement() {
           />
 
           <View style={styles.inputShell}>
-            <Ionicons name="document-text-outline" size={17} color={COLORS.faint} />
+            <Ionicons
+              name="document-text-outline"
+              size={17}
+              color={COLORS.faint}
+            />
             <TextInput
               placeholder="Enter task details"
               placeholderTextColor="#94A3B8"
@@ -658,7 +667,9 @@ function TaskManagement() {
             </View>
             <View style={styles.deadlineTextWrap}>
               <Text style={styles.metaLabel}>Deadline</Text>
-              <Text style={styles.metaValue}>{formatDate(selectedDeadline)}</Text>
+              <Text style={styles.metaValue}>
+                {formatDate(selectedDeadline)}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.faint} />
           </Pressable>
@@ -972,7 +983,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   heroIconBox: {
@@ -987,16 +998,16 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "900",
     marginTop: 20,
     maxWidth: "94%",
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.78)",
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     marginTop: 8,
     maxWidth: "96%",
     fontWeight: "600",
@@ -1025,12 +1036,12 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "900",
   },
   statLabel: {
     color: "rgba(255,255,255,0.76)",
-    fontSize: 9.5,
+    fontSize: 9,
     marginTop: 2,
     fontWeight: "700",
   },
@@ -1061,7 +1072,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -1069,8 +1080,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "900",
   },
   inputShell: {
@@ -1090,8 +1101,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 58,
     color: COLORS.text,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     padding: 0,
     fontWeight: "700",
   },
@@ -1120,14 +1131,14 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     color: COLORS.muted,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.65,
   },
   metaValue: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "800",
     marginTop: 3,
   },
@@ -1151,7 +1162,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   priorityOptionText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   saveButtonOuter: {
@@ -1170,7 +1181,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
   },
   boardHeader: {
@@ -1191,7 +1202,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: COLORS.brand,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "800",
   },
   emptyState: {
@@ -1213,13 +1224,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyStateTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
     color: COLORS.text,
   },
   emptyStateText: {
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     textAlign: "center",
     color: COLORS.muted,
     marginTop: 6,
@@ -1244,12 +1255,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   priorityGroupBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   priorityGroupCount: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   emptyGroupCard: {
@@ -1265,7 +1276,7 @@ const styles = StyleSheet.create({
   },
   emptyGroupText: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
   },
   taskCard: {
@@ -1337,7 +1348,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   priorityBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   deleteButton: {
@@ -1352,8 +1363,8 @@ const styles = StyleSheet.create({
   },
   taskTitle: {
     color: COLORS.text,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: "900",
     marginTop: 12,
   },
@@ -1376,7 +1387,7 @@ const styles = StyleSheet.create({
   },
   metaPillText: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   deadlineStatus: {
@@ -1393,7 +1404,7 @@ const styles = StyleSheet.create({
   },
   relativeDeadlineText: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
     textAlign: "right",
     flexShrink: 1,
@@ -1431,13 +1442,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
   },
   modalSubtitle: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     marginTop: 4,
     fontWeight: "600",
   },
@@ -1477,12 +1488,12 @@ const styles = StyleSheet.create({
   },
   deadlineOptionTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "900",
   },
   deadlineOptionSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     marginTop: 3,
     fontWeight: "700",
   },

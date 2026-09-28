@@ -28,7 +28,7 @@ export default function AppTabs() {
         },
         tabBarLabelStyle: {
           fontWeight: "600",
-          fontSize: 12,
+          fontSize: 11,
         },
         headerShown: false,
       }}

@@ -89,7 +89,9 @@ export function AnimatedSplashOverlay() {
 
         {/* Bottom green section */}
         <View style={styles.bottomSection}>
-          <Text style={styles.tagline}>Powering India&apos;s Green Future 🌱</Text>
+          <Text style={styles.tagline}>
+            Powering India&apos;s Green Future 🌱
+          </Text>
           <Text style={styles.description}>
             Rooftop solar · Smart energy · Expert engineers
           </Text>
@@ -225,14 +227,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   logo: {
-    fontSize: 36,
+    fontSize: 33,
     fontWeight: "700",
     color: "#1B1B1B",
     letterSpacing: 2,
     marginBottom: 4,
   },
   logoSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 3,
     color: "#999",
     marginBottom: 24,
@@ -248,22 +250,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryIcon: {
-    fontSize: 32,
+    fontSize: 29,
     width: 48,
     height: 48,
     borderRadius: 12,
     backgroundColor: "#F5F5F5",
     textAlignVertical: "center",
     textAlign: "center",
-    lineHeight: 48,
+    lineHeight: 44,
   },
   categoryLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#666",
     fontWeight: "500",
   },
   solutionText: {
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 1.5,
     color: "#4A9B7A",
     fontWeight: "600",
@@ -277,18 +279,18 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   tagline: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "700",
     color: "#fff",
     textAlign: "center",
     marginBottom: 8,
   },
   description: {
-    fontSize: 13,
+    fontSize: 12,
     color: "rgba(255,255,255,0.8)",
     textAlign: "center",
     marginBottom: 24,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   dotsContainer: {
     flexDirection: "row",

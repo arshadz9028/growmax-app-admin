@@ -2,14 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import growNew from "../../../assets/images/grow_new.jpeg";
 import { useAuth } from "../../contexts/auth-context";
@@ -71,9 +71,11 @@ function HeaderComponent() {
 
           {/* Right: Actions (Notification & Profile Avatar) */}
           <View style={styles.actionsContainer}>
-            <TouchableOpacity style={styles.iconButton} 
-            onPress={() => router.push("/admin")}
-            activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => router.push("/admin")}
+              activeOpacity={0.8}
+            >
               <Feather name="bell" size={22} color="#ffffffff" />
               <View style={styles.notificationDot} />
             </TouchableOpacity>
@@ -220,7 +222,7 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   brandTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "bold",
     color: colors.white,
   },
@@ -239,7 +241,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   bellIcon: {
-    fontSize: 18,
+    fontSize: 15,
     color: colors.white,
   },
   notificationDot: {
@@ -281,13 +283,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "700",
     color: colors.textDark,
     marginBottom: 6,
   },
   modalSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#64748b",
     marginBottom: 20,
     textAlign: "center",
@@ -321,13 +323,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   greetingSub: {
-    fontSize: 15,
+    fontSize: 12,
     color: colors.brandLight,
     fontWeight: "500",
     marginBottom: 4,
   },
   greetingName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: colors.white,
   },
@@ -346,17 +348,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   statIcon: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "bold",
     marginBottom: 4,
   },
   statNumber: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "bold",
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.brandLight,
     fontWeight: "bold",
     letterSpacing: 0.5,

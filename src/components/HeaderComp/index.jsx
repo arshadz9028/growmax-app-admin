@@ -1,12 +1,6 @@
-import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const BRAND_BLUE = "#6C85EE";
 
@@ -20,11 +14,10 @@ export default function HeaderComp({ title, subtitle, onBackPress }) {
       return;
     }
 
-    // 2. Otherwise, check if we can go back in the stack, or fallback to home
+    // Respect the navigation stack instead of forcibly redirecting to the index screen.
+    // If there is no previous route, do nothing rather than resetting the user to home.
     if (router.canGoBack()) {
       router.back();
-    } else {
-      router.replace("/explore");
     }
   };
 
@@ -35,21 +28,17 @@ export default function HeaderComp({ title, subtitle, onBackPress }) {
 
       {/* Back Button & Title */}
       <View style={styles.headerContent}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           activeOpacity={0.7}
           onPress={handleBack}
         >
-          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>{title}</Text>
-          {subtitle && (
-            <Text style={styles.headerSubtitle}>
-              {subtitle}
-            </Text>
-          )}
+          {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
         </View>
       </View>
     </View>
@@ -94,22 +83,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.3,
-    
-textShadowColor: 'rgba(0, 0, 0, 0.1)',
+
+    textShadowColor: "rgba(0, 0, 0, 0.1)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   headerSubtitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: "rgba(255, 255, 255, 0.85)",
     marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowColor: "rgba(0, 0, 0, 0.1)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
-    
   },
 });

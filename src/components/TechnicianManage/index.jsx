@@ -3,17 +3,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -852,7 +852,7 @@ export default function AdminManageTechnicians() {
           </Text>
           <Pressable style={s.heroBtn} onPress={() => setCreateVisible(true)}>
             <Text style={s.heroBtnT}>Create technician profile</Text>
-            <Ionicons name="add-circle-outline" size={17} color={'#ffffffa1'} />
+            <Ionicons name="add-circle-outline" size={17} color={"#ffffffa1"} />
           </Pressable>
         </LinearGradient>
         <View style={s.stats}>
@@ -947,13 +947,13 @@ const s = StyleSheet.create({
   hero: { borderRadius: 18, padding: 18 },
   heroTag: {
     color: "rgba(255,255,255,.75)",
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     letterSpacing: 1.2,
   },
   heroTitle: {
     color: "#fff",
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: "900",
     marginTop: 7,
     maxWidth: "86%",
@@ -968,7 +968,7 @@ const s = StyleSheet.create({
     gap: 7,
     alignItems: "center",
   },
-  heroBtnT: { color: '#FFF', fontWeight: "900" },
+  heroBtnT: { color: "#FFF", fontWeight: "900" },
   stats: { flexDirection: "row", gap: 8, marginVertical: 14 },
   search: {
     height: 45,
@@ -981,14 +981,14 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  searchInput: { flex: 1, color: C.text, fontSize: 12, fontWeight: "700" },
+  searchInput: { flex: 1, color: C.text, fontSize: 11, fontWeight: "700" },
   section: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginVertical: 16,
   },
-  sectionT: { color: C.text, fontSize: 16, fontWeight: "900" },
+  sectionT: { color: C.text, fontSize: 14, fontWeight: "900" },
   plus: {
     width: 36,
     height: 36,
@@ -1023,14 +1023,14 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: C.text, fontSize: 14, fontWeight: "900" },
-  sub: { color: C.muted, fontSize: 10.5, fontWeight: "700", marginTop: 3 },
+  title: { color: C.text, fontSize: 12, fontWeight: "900" },
+  sub: { color: C.muted, fontSize: 10, fontWeight: "700", marginTop: 3 },
   badge: {
     overflow: "hidden",
     borderRadius: 99,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
   },
@@ -1043,8 +1043,8 @@ const s = StyleSheet.create({
     borderRadius: 11,
     padding: 8,
   },
-  miniV: { color: C.text, fontSize: 10, fontWeight: "900", marginTop: 6 },
-  miniL: { color: C.muted, fontSize: 8.5, fontWeight: "800", marginTop: 2 },
+  miniV: { color: C.text, fontSize: 9.5, fontWeight: "900", marginTop: 6 },
+  miniL: { color: C.muted, fontSize: 8, fontWeight: "800", marginTop: 2 },
   open: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1052,7 +1052,7 @@ const s = StyleSheet.create({
     gap: 3,
     marginTop: 11,
   },
-  openT: { color: C.brand, fontSize: 11, fontWeight: "900" },
+  openT: { color: C.brand, fontSize: 10, fontWeight: "900" },
   address: {
     backgroundColor: C.alt,
     borderRadius: 11,
@@ -1064,8 +1064,8 @@ const s = StyleSheet.create({
   addr: {
     flex: 1,
     color: C.text,
-    fontSize: 10.5,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "700",
   },
   primary: {
@@ -1078,7 +1078,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     gap: 7,
   },
-  whiteText: { color: "#fff", fontSize: 11, fontWeight: "900" },
+  whiteText: { color: "#fff", fontSize: 10, fontWeight: "900" },
   state: {
     backgroundColor: C.surface,
     borderWidth: 1,
@@ -1087,8 +1087,8 @@ const s = StyleSheet.create({
     padding: 27,
     alignItems: "center",
   },
-  stateT: { color: C.text, fontSize: 14, fontWeight: "900", marginTop: 10 },
-  stateP: { color: C.muted, fontSize: 11, textAlign: "center", marginTop: 5 },
+  stateT: { color: C.text, fontSize: 12, fontWeight: "900", marginTop: 10 },
+  stateP: { color: C.muted, fontSize: 10, textAlign: "center", marginTop: 5 },
   retry: {
     backgroundColor: C.brand,
     borderRadius: 10,
@@ -1124,7 +1124,7 @@ const s = StyleSheet.create({
     borderRadius: 11,
     backgroundColor: C.redSoft,
   },
-  deleteText: { color: C.red, fontSize: 10, fontWeight: "900" },
+  deleteText: { color: C.red, fontSize: 9.5, fontWeight: "900" },
   form: { paddingTop: 12 },
   input: {
     height: 45,
@@ -1134,7 +1134,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     color: C.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     marginBottom: 9,
   },
@@ -1172,14 +1172,14 @@ const s = StyleSheet.create({
   spacer: { width: 34 },
   toolbarLabel: {
     color: C.muted,
-    fontSize: 8.5,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 0.7,
     textAlign: "center",
   },
   toolbarTitle: {
     color: C.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
     textAlign: "center",
     marginTop: 2,
@@ -1201,7 +1201,12 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  photoLabel: { color: C.muted, fontSize: 9, fontWeight: "800", marginTop: 4 },
+  photoLabel: {
+    color: C.muted,
+    fontSize: 8.5,
+    fontWeight: "800",
+    marginTop: 4,
+  },
   issue: {
     flexDirection: "row",
     gap: 7,
@@ -1210,7 +1215,7 @@ const s = StyleSheet.create({
     padding: 10,
     marginTop: 11,
   },
-  issueText: { flex: 1, color: C.red, fontSize: 10.5, fontWeight: "700" },
+  issueText: { flex: 1, color: C.red, fontSize: 10, fontWeight: "700" },
   review: { flexDirection: "row", gap: 9, marginTop: 12 },
   reject: {
     flex: 1,

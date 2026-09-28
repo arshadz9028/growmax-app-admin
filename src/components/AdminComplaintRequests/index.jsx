@@ -1,19 +1,20 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -72,7 +73,9 @@ function getComplaintStatus(complaint) {
 }
 
 function getComplaintPriority(complaint) {
-  return String(complaint?.priority || complaint?.severity || "medium").toLowerCase();
+  return String(
+    complaint?.priority || complaint?.severity || "medium",
+  ).toLowerCase();
 }
 
 function normalizeComplaints(payload) {
@@ -219,7 +222,10 @@ function InfoPill({ icon, label, value, accent, soft }) {
     <View style={[styles.infoPill, { backgroundColor: soft }]}>
       <Ionicons name={icon} size={14} color={accent} />
       <View style={styles.infoPillTextWrap}>
-        <Text style={[styles.infoPillValue, { color: accent }]} numberOfLines={1}>
+        <Text
+          style={[styles.infoPillValue, { color: accent }]}
+          numberOfLines={1}
+        >
           {value}
         </Text>
         <Text style={styles.infoPillLabel}>{label}</Text>
@@ -245,12 +251,19 @@ function ComplaintCard({
 
   return (
     <View style={styles.complaintCard}>
-      <View style={[styles.complaintAccent, { backgroundColor: priority.accent }]} />
+      <View
+        style={[styles.complaintAccent, { backgroundColor: priority.accent }]}
+      />
       <TextureLines />
 
       <View style={styles.cardTopRow}>
         <View style={styles.customerBlock}>
-          <View style={[styles.customerIconWrap, { backgroundColor: priority.soft }]}>
+          <View
+            style={[
+              styles.customerIconWrap,
+              { backgroundColor: priority.soft },
+            ]}
+          >
             <Ionicons name="person-outline" size={19} color={priority.accent} />
           </View>
           <View style={styles.customerTextWrap}>
@@ -263,7 +276,9 @@ function ComplaintCard({
           </View>
         </View>
 
-        <View style={[styles.priorityBadge, { backgroundColor: priority.soft }]}>
+        <View
+          style={[styles.priorityBadge, { backgroundColor: priority.soft }]}
+        >
           <Ionicons name={priority.icon} size={13} color={priority.accent} />
           <Text style={[styles.priorityBadgeText, { color: priority.accent }]}>
             {priority.label}
@@ -274,9 +289,13 @@ function ComplaintCard({
       <View style={styles.complaintPanel}>
         <View style={styles.complaintPanelHeader}>
           <View style={styles.complaintTitleWrap}>
-            <Text style={styles.complaintTitle}>{getComplaintTitle(complaint)}</Text>
+            <Text style={styles.complaintTitle}>
+              {getComplaintTitle(complaint)}
+            </Text>
             <Text style={styles.complaintServiceText}>
-              {complaint?.serviceName || complaint?.service?.name || "Service not linked"}
+              {complaint?.serviceName ||
+                complaint?.service?.name ||
+                "Service not linked"}
             </Text>
           </View>
           <View style={styles.statusPill}>
@@ -284,7 +303,9 @@ function ComplaintCard({
           </View>
         </View>
 
-        <Text style={styles.complaintMessage}>{getComplaintMessage(complaint)}</Text>
+        <Text style={styles.complaintMessage}>
+          {getComplaintMessage(complaint)}
+        </Text>
       </View>
 
       <View style={styles.infoGrid}>
@@ -324,8 +345,14 @@ function ComplaintCard({
       </View>
 
       {attachmentUrl ? (
-        <Pressable style={styles.attachmentCard} onPress={() => onOpenImage(attachmentUrl)}>
-          <Image source={{ uri: attachmentUrl }} style={styles.attachmentImage} />
+        <Pressable
+          style={styles.attachmentCard}
+          onPress={() => onOpenImage(attachmentUrl)}
+        >
+          <Image
+            source={{ uri: attachmentUrl }}
+            style={styles.attachmentImage}
+          />
           <View style={styles.attachmentTextWrap}>
             <Text style={styles.attachmentTitle}>Attached evidence</Text>
             <Text style={styles.attachmentSubtitle}>Tap to preview image</Text>
@@ -341,7 +368,9 @@ function ComplaintCard({
             Updated {formatDate(complaint?.updatedAt || complaint?.createdAt)}
           </Text>
         </View>
-        <Text style={styles.indexText}>#{String(index + 1).padStart(2, "0")}</Text>
+        <Text style={styles.indexText}>
+          #{String(index + 1).padStart(2, "0")}
+        </Text>
       </View>
 
       <View style={styles.actionRow}>
@@ -353,7 +382,11 @@ function ComplaintCard({
           {isRejecting ? (
             <ActivityIndicator color={COLORS.danger} size="small" />
           ) : (
-            <Ionicons name="close-circle-outline" size={17} color={COLORS.danger} />
+            <Ionicons
+              name="close-circle-outline"
+              size={17}
+              color={COLORS.danger}
+            />
           )}
           <Text style={styles.rejectButtonText}>Reject</Text>
         </Pressable>
@@ -366,7 +399,11 @@ function ComplaintCard({
           {isResolving ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
-            <Ionicons name="checkmark-circle-outline" size={17} color="#FFFFFF" />
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color="#FFFFFF"
+            />
           )}
           <Text style={styles.resolveButtonText}>Resolve</Text>
         </Pressable>
@@ -388,34 +425,42 @@ export default function AdminComplaintRequests() {
   const [actionType, setActionType] = React.useState("");
   const [adminNote, setAdminNote] = React.useState("");
 
-  const fetchComplaints = React.useCallback(async ({ refreshing = false } = {}) => {
-    if (refreshing) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-
-    setErrorMessage("");
-
-    try {
-      const response = await safeFetch(getApiUrl(COMPLAINT_REQUESTS_API_PATH), {
-        method: "GET",
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Unable to load complaint requests.");
+  const fetchComplaints = React.useCallback(
+    async ({ refreshing = false } = {}) => {
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
       }
 
-      setComplaints(normalizeComplaints(payload));
-    } catch (error) {
-      setErrorMessage(error?.message || "Unable to load complaint requests.");
-      setComplaints([]);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+      setErrorMessage("");
+
+      try {
+        const response = await safeFetch(
+          getApiUrl(COMPLAINT_REQUESTS_API_PATH),
+          {
+            method: "GET",
+          },
+        );
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            payload?.message || "Unable to load complaint requests.",
+          );
+        }
+
+        setComplaints(normalizeComplaints(payload));
+      } catch (error) {
+        setErrorMessage(error?.message || "Unable to load complaint requests.");
+        setComplaints([]);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [],
+  );
 
   React.useEffect(() => {
     fetchComplaints();
@@ -427,7 +472,9 @@ export default function AdminComplaintRequests() {
       high: complaints.filter((item) =>
         ["high", "urgent", "critical"].includes(getComplaintPriority(item)),
       ).length,
-      pending: complaints.filter((item) => getComplaintStatus(item) === "pending").length,
+      pending: complaints.filter(
+        (item) => getComplaintStatus(item) === "pending",
+      ).length,
       review: complaints.filter((item) =>
         ["review", "in-review", "in_review"].includes(getComplaintStatus(item)),
       ).length,
@@ -441,7 +488,10 @@ export default function AdminComplaintRequests() {
       const priority = getComplaintPriority(complaint);
       const status = getComplaintStatus(complaint);
 
-      if (activeFilter === "high" && !["high", "urgent", "critical"].includes(priority)) {
+      if (
+        activeFilter === "high" &&
+        !["high", "urgent", "critical"].includes(priority)
+      ) {
         return false;
       }
 
@@ -491,24 +541,29 @@ export default function AdminComplaintRequests() {
     setProcessingId(`${actionKey}-${complaintId}`);
 
     try {
-      const response = await safeFetch(getApiUrl(updateComplaintApiPath(complaintId)), {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await safeFetch(
+        getApiUrl(updateComplaintApiPath(complaintId)),
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            complaintStatus: nextStatus,
+            requestStatus: nextStatus,
+            status: nextStatus,
+            isNewNotification: false,
+            reviewedAt: new Date().toISOString(),
+            resolvedAt:
+              nextStatus === "resolved" ? new Date().toISOString() : null,
+            rejectedAt:
+              nextStatus === "rejected" ? new Date().toISOString() : null,
+            resolutionNote: nextStatus === "resolved" ? note : "",
+            rejectionReason: nextStatus === "rejected" ? note : "",
+            adminNote: note,
+          }),
         },
-        body: JSON.stringify({
-          complaintStatus: nextStatus,
-          requestStatus: nextStatus,
-          status: nextStatus,
-          isNewNotification: false,
-          reviewedAt: new Date().toISOString(),
-          resolvedAt: nextStatus === "resolved" ? new Date().toISOString() : null,
-          rejectedAt: nextStatus === "rejected" ? new Date().toISOString() : null,
-          resolutionNote: nextStatus === "resolved" ? note : "",
-          rejectionReason: nextStatus === "rejected" ? note : "",
-          adminNote: note,
-        }),
-      });
+      );
 
       const payload = await response.json().catch(() => null);
 
@@ -583,15 +638,25 @@ export default function AdminComplaintRequests() {
 
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
-              <Ionicons name="chatbubble-ellipses-outline" size={14} color="#FFFFFF" />
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={14}
+                color="#FFFFFF"
+              />
               <Text style={styles.heroBadgeText}>Requests Section</Text>
             </View>
             <View style={styles.heroIconWrap}>
-              <Ionicons name="shield-checkmark-outline" size={22} color="#FFFFFF" />
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={22}
+                color="#FFFFFF"
+              />
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Resolve or reject complaint requests.</Text>
+          <Text style={styles.heroTitle}>
+            Resolve or reject complaint requests.
+          </Text>
           <Text style={styles.heroSubtitle}>
             Review customer issues, linked services, priority, evidence, and
             admin notes before closing the request.
@@ -644,10 +709,20 @@ export default function AdminComplaintRequests() {
                   style={[styles.filterChip, active && styles.filterChipActive]}
                   onPress={() => setActiveFilter(filter.key)}
                 >
-                  <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  <Text
+                    style={[
+                      styles.filterText,
+                      active && styles.filterTextActive,
+                    ]}
+                  >
                     {filter.label}
                   </Text>
-                  <Text style={[styles.filterCount, active && styles.filterCountActive]}>
+                  <Text
+                    style={[
+                      styles.filterCount,
+                      active && styles.filterCountActive,
+                    ]}
+                  >
                     {counts[filter.key]}
                   </Text>
                 </Pressable>
@@ -659,7 +734,9 @@ export default function AdminComplaintRequests() {
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionEyebrow}>Complaint queue</Text>
-            <Text style={styles.sectionTitle}>Requests waiting for admin action</Text>
+            <Text style={styles.sectionTitle}>
+              Requests waiting for admin action
+            </Text>
           </View>
           <Pressable
             style={styles.refreshButton}
@@ -673,23 +750,36 @@ export default function AdminComplaintRequests() {
           <View style={styles.stateCard}>
             <ActivityIndicator color={COLORS.brand} />
             <Text style={styles.stateTitle}>Loading complaint requests</Text>
-            <Text style={styles.stateText}>Fetching open customer complaints.</Text>
+            <Text style={styles.stateText}>
+              Fetching open customer complaints.
+            </Text>
           </View>
         ) : errorMessage ? (
           <View style={styles.stateCard}>
             <View style={styles.stateIconWrapDanger}>
-              <Ionicons name="warning-outline" size={24} color={COLORS.danger} />
+              <Ionicons
+                name="warning-outline"
+                size={24}
+                color={COLORS.danger}
+              />
             </View>
             <Text style={styles.stateTitle}>Could not load requests</Text>
             <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable style={styles.retryButton} onPress={() => fetchComplaints()}>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => fetchComplaints()}
+            >
               <Text style={styles.retryButtonText}>Try again</Text>
             </Pressable>
           </View>
         ) : filteredComplaints.length === 0 ? (
           <View style={styles.stateCard}>
             <View style={styles.stateIconWrap}>
-              <Ionicons name="checkmark-done-outline" size={24} color={COLORS.success} />
+              <Ionicons
+                name="checkmark-done-outline"
+                size={24}
+                color={COLORS.success}
+              />
             </View>
             <Text style={styles.stateTitle}>No complaint requests found</Text>
             <Text style={styles.stateText}>
@@ -699,7 +789,10 @@ export default function AdminComplaintRequests() {
         ) : (
           filteredComplaints.map((complaint, index) => (
             <ComplaintCard
-              key={getComplaintId(complaint) || `${getCustomerEmail(complaint)}-${index}`}
+              key={
+                getComplaintId(complaint) ||
+                `${getCustomerEmail(complaint)}-${index}`
+              }
               complaint={complaint}
               index={index}
               processingId={processingId}
@@ -721,11 +814,17 @@ export default function AdminComplaintRequests() {
           <View style={styles.imageModalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Attached evidence</Text>
-              <Pressable style={styles.modalCloseButton} onPress={() => setImagePreviewUrl("")}>
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setImagePreviewUrl("")}
+              >
                 <Ionicons name="close" size={18} color={COLORS.text} />
               </Pressable>
             </View>
-            <Image source={{ uri: imagePreviewUrl }} style={styles.previewImage} />
+            <Image
+              source={{ uri: imagePreviewUrl }}
+              style={styles.previewImage}
+            />
           </View>
         </View>
       </Modal>
@@ -749,7 +848,10 @@ export default function AdminComplaintRequests() {
                     : "Add the reason before rejecting this complaint."}
                 </Text>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={() => setActionTarget(null)}>
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setActionTarget(null)}
+              >
                 <Ionicons name="close" size={18} color={COLORS.text} />
               </Pressable>
             </View>
@@ -757,20 +859,32 @@ export default function AdminComplaintRequests() {
             <View
               style={[
                 styles.actionTargetBox,
-                { backgroundColor: modalIsResolve ? COLORS.successSoft : COLORS.dangerSoft },
+                {
+                  backgroundColor: modalIsResolve
+                    ? COLORS.successSoft
+                    : COLORS.dangerSoft,
+                },
               ]}
             >
               <Ionicons
-                name={modalIsResolve ? "checkmark-circle-outline" : "close-circle-outline"}
+                name={
+                  modalIsResolve
+                    ? "checkmark-circle-outline"
+                    : "close-circle-outline"
+                }
                 size={18}
                 color={modalIsResolve ? COLORS.success : COLORS.danger}
               />
               <View style={styles.actionTargetTextWrap}>
                 <Text style={styles.actionTargetTitle}>
-                  {actionTarget ? getComplaintTitle(actionTarget) : "Selected complaint"}
+                  {actionTarget
+                    ? getComplaintTitle(actionTarget)
+                    : "Selected complaint"}
                 </Text>
                 <Text style={styles.actionTargetSubtitle}>
-                  {actionTarget ? getCustomerName(actionTarget) : "Selected customer"}
+                  {actionTarget
+                    ? getCustomerName(actionTarget)
+                    : "Selected customer"}
                 </Text>
               </View>
             </View>
@@ -790,13 +904,20 @@ export default function AdminComplaintRequests() {
             />
 
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelButton} onPress={() => setActionTarget(null)}>
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => setActionTarget(null)}
+              >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.modalConfirmButton,
-                  { backgroundColor: modalIsResolve ? COLORS.success : COLORS.danger },
+                  {
+                    backgroundColor: modalIsResolve
+                      ? COLORS.success
+                      : COLORS.danger,
+                  },
                 ]}
                 onPress={submitAction}
               >
@@ -881,7 +1002,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   heroIconWrap: {
@@ -896,16 +1017,16 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "900",
     marginTop: 20,
     maxWidth: "94%",
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.78)",
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "600",
     marginTop: 8,
     maxWidth: "96%",
@@ -925,12 +1046,12 @@ const styles = StyleSheet.create({
   },
   heroStatValue: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "900",
   },
   heroStatLabel: {
     color: "rgba(255,255,255,0.72)",
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -962,7 +1083,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     paddingVertical: 0,
   },
@@ -987,7 +1108,7 @@ const styles = StyleSheet.create({
   },
   filterText: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   filterTextActive: {
@@ -995,7 +1116,7 @@ const styles = StyleSheet.create({
   },
   filterCount: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   filterCountActive: {
@@ -1009,7 +1130,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -1017,8 +1138,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
   },
   refreshButton: {
@@ -1065,14 +1186,14 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
     marginTop: 10,
   },
   stateText: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     textAlign: "center",
     fontWeight: "600",
     marginTop: 5,
@@ -1086,7 +1207,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   complaintCard: {
@@ -1137,13 +1258,13 @@ const styles = StyleSheet.create({
   },
   customerName: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
   },
   customerMeta: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9.5,
+    lineHeight: 14,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1156,7 +1277,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   priorityBadgeText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -1180,13 +1301,13 @@ const styles = StyleSheet.create({
   },
   complaintTitle: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
   },
   complaintServiceText: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9.5,
+    lineHeight: 14,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1198,14 +1319,14 @@ const styles = StyleSheet.create({
   },
   statusPillText: {
     color: COLORS.blue,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "capitalize",
   },
   complaintMessage: {
     color: COLORS.text,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "700",
     marginTop: 10,
   },
@@ -1229,13 +1350,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoPillValue: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: "900",
     textTransform: "capitalize",
   },
   infoPillLabel: {
     color: COLORS.muted,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "800",
     marginTop: 1,
   },
@@ -1261,12 +1382,12 @@ const styles = StyleSheet.create({
   },
   attachmentTitle: {
     color: COLORS.text,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   attachmentSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1283,12 +1404,12 @@ const styles = StyleSheet.create({
   },
   createdText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   indexText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   actionRow: {
@@ -1310,7 +1431,7 @@ const styles = StyleSheet.create({
   },
   rejectButtonText: {
     color: COLORS.danger,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   resolveButton: {
@@ -1330,7 +1451,7 @@ const styles = StyleSheet.create({
   },
   resolveButtonText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   disabledButton: {
@@ -1370,13 +1491,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
   },
   modalSubtitle: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "700",
     marginTop: 4,
     maxWidth: 260,
@@ -1403,12 +1524,12 @@ const styles = StyleSheet.create({
   },
   actionTargetTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   actionTargetSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1421,8 +1542,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     color: COLORS.text,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 17,
     fontWeight: "700",
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1444,7 +1565,7 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     color: COLORS.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   modalConfirmButton: {
@@ -1456,7 +1577,7 @@ const styles = StyleSheet.create({
   },
   modalConfirmText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
 });

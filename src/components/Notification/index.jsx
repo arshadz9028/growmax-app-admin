@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -460,14 +460,14 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   heroEyebrow: {
     color: "rgba(235,255,219,.74)",
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     letterSpacing: 1.4,
   },
-  heroTitle: { color: "#fff", fontSize: 26, fontWeight: "900", marginTop: 4 },
+  heroTitle: { color: "#fff", fontSize: 22, fontWeight: "900", marginTop: 4 },
   heroCopy: {
     color: "rgba(240,255,230,.78)",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     marginTop: 4,
   },
@@ -493,7 +493,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 3,
   },
-  bellCountText: { color: C.dark, fontSize: 9, fontWeight: "900" },
+  bellCountText: { color: C.dark, fontSize: 8.5, fontWeight: "900" },
   markAll: {
     alignSelf: "flex-start",
     height: 39,
@@ -506,7 +506,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     marginTop: 17,
   },
-  markAllText: { color: C.dark, fontSize: 11, fontWeight: "900" },
+  markAllText: { color: C.dark, fontSize: 10, fontWeight: "900" },
   filters: { flexDirection: "row", gap: 8, marginVertical: 15 },
   filter: {
     borderRadius: 99,
@@ -517,7 +517,7 @@ const s = StyleSheet.create({
     borderColor: C.border,
   },
   filterOn: { backgroundColor: C.brand, borderColor: C.brand },
-  filterText: { color: C.muted, fontSize: 10.5, fontWeight: "900" },
+  filterText: { color: C.muted, fontSize: 9.5, fontWeight: "900" },
   filterTextOn: { color: "#fff" },
   card: {
     backgroundColor: C.surface,
@@ -547,7 +547,7 @@ const s = StyleSheet.create({
   },
   cardTitle: {
     color: C.text,
-    fontSize: 13.5,
+    fontSize: 11.5,
     fontWeight: "900",
     flexShrink: 1,
   },
@@ -559,7 +559,7 @@ const s = StyleSheet.create({
     marginLeft: 6,
     marginTop: 5,
   },
-  time: { color: C.muted, fontSize: 9.5, fontWeight: "800", marginTop: 3 },
+  time: { color: C.muted, fontSize: 9, fontWeight: "800", marginTop: 3 },
   readToggle: {
     height: 31,
     width: 31,
@@ -570,8 +570,8 @@ const s = StyleSheet.create({
   },
   message: {
     color: C.text,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "600",
     marginTop: 12,
   },
@@ -586,7 +586,7 @@ const s = StyleSheet.create({
     paddingVertical: 4,
   },
   tagDanger: { backgroundColor: C.redSoft },
-  tagText: { color: C.brand, fontSize: 9, fontWeight: "800" },
+  tagText: { color: C.brand, fontSize: 8.5, fontWeight: "800" },
   tagDangerText: { color: C.red },
   photoPreview: {
     flexDirection: "row",
@@ -602,7 +602,7 @@ const s = StyleSheet.create({
   },
   previewText: {
     color: C.muted,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "800",
     marginLeft: 2,
   },
@@ -614,13 +614,13 @@ const s = StyleSheet.create({
   },
   readState: {
     color: C.muted,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
   },
   readStateUnread: { color: C.brand },
   openAction: { flexDirection: "row", alignItems: "center", gap: 3 },
-  openText: { color: C.brand, fontSize: 10.5, fontWeight: "900" },
+  openText: { color: C.brand, fontSize: 9.5, fontWeight: "900" },
   state: {
     backgroundColor: C.surface,
     borderWidth: 1,
@@ -629,13 +629,13 @@ const s = StyleSheet.create({
     padding: 30,
     alignItems: "center",
   },
-  stateTitle: { color: C.text, fontSize: 14, fontWeight: "900", marginTop: 10 },
+  stateTitle: { color: C.text, fontSize: 12, fontWeight: "900", marginTop: 10 },
   stateText: {
     color: C.muted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 14,
     marginTop: 5,
   },
   retry: {
@@ -645,7 +645,7 @@ const s = StyleSheet.create({
     paddingVertical: 9,
     marginTop: 13,
   },
-  retryText: { color: "#fff", fontSize: 11, fontWeight: "900" },
+  retryText: { color: "#fff", fontSize: 10, fontWeight: "900" },
   disabled: { opacity: 0.6 },
   lime: "#D9FF76",
 });

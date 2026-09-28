@@ -1,22 +1,25 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import CalenderVisit from "../CalenderVisit";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -42,8 +45,28 @@ const COLORS = {
 };
 
 const USERS_WITH_SERVICES_API_PATH = "/api/admin/users";
+const GROW_CLEANING_API_PATH = "/api/grow-cleaning";
 const updateUserServiceApiPath = (userId, serviceId) =>
   `/api/admin/users/${userId}/services/${serviceId}`;
+
+function buildGrowCleaningUrl(user) {
+  const params = new URLSearchParams();
+  const userId = getUserId(user);
+  const email = String(user?.email || "")
+    .trim()
+    .toLowerCase();
+
+  if (userId) {
+    params.set("userId", String(userId));
+  }
+
+  if (email) {
+    params.set("email", email);
+  }
+
+  const query = params.toString();
+  return query ? `${GROW_CLEANING_API_PATH}?${query}` : GROW_CLEANING_API_PATH;
+}
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -73,24 +96,38 @@ function getServiceId(service, index) {
   );
 }
 
-function isServiceActive(service) {
+function isServiceActivated(service) {
   const status = String(
     service?.status || service?.serviceStatus || "",
   ).toLowerCase();
-  const blockedFlag =
-    service?.blocked === true ||
-    service?.blocked === "true" ||
-    status === "blocked";
-  const inactiveFlag =
+
+  const notActivated =
     service?.active === false ||
     service?.active === "false" ||
-    status === "inactive";
+    status === "inactive" ||
+    status === "not_active" ||
+    status === "pending" ||
+    status === "unactivated" ||
+    status === "deactivated";
 
-  if (blockedFlag || inactiveFlag) {
-    return false;
-  }
+  return !notActivated;
+}
 
-  return true;
+function isServiceBlocked(service) {
+  const status = String(
+    service?.status || service?.serviceStatus || "",
+  ).toLowerCase();
+
+  return (
+    service?.blocked === true ||
+    service?.blocked === "true" ||
+    status === "blocked" ||
+    status === "suspended"
+  );
+}
+
+function isServiceActive(service) {
+  return isServiceActivated(service) && !isServiceBlocked(service);
 }
 
 function normalizeUsers(payload) {
@@ -112,27 +149,215 @@ function normalizeUsers(payload) {
     .filter((user) => getServiceList(user).length > 0);
 }
 
+function getDateKeyFromString(value) {
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  const directMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directMatch) {
+    return directMatch[1];
+  }
+
+  return null;
+}
+
+function toUtcMiddayIso(dateKey) {
+  const [year, month, day] = String(dateKey || "")
+    .split("-")
+    .map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)).toISOString();
+}
+
+function normalizeDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    const dateKey = formatDateKey(value);
+    if (!dateKey) return null;
+    const [year, month, day] = dateKey.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  }
+
+  if (typeof value === "string") {
+    const dateKey = getDateKeyFromString(value);
+    if (dateKey) {
+      const [year, month, day] = dateKey.split("-").map(Number);
+      return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    const fallbackDateKey = formatDateKey(parsed);
+    if (!fallbackDateKey) return null;
+    const [year, month, day] = fallbackDateKey.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  }
+
+  if (typeof value === "object") {
+    const unwrapped = value?.$date || value?.date || value?.value;
+    if (unwrapped) {
+      return normalizeDateValue(unwrapped);
+    }
+  }
+
+  return null;
+}
+
+function getVisitDateSource(service, user) {
+  // Prefer a populated array. An empty alias on `service` must not hide the
+  // populated `user.consumerManagement.selectedVisits` array from MongoDB.
+  const candidates = [
+    { owner: "service", parent: service, field: "selectedVisits" },
+    { owner: "service", parent: service, field: "visitDates" },
+    { owner: "service", parent: service, field: "selectedDates" },
+    { owner: "service", parent: service, field: "dates" },
+    {
+      owner: "serviceConsumerManagement",
+      parent: service?.consumerManagement,
+      field: "selectedVisits",
+    },
+    {
+      owner: "serviceConsumerManagement",
+      parent: service?.consumerManagement,
+      field: "visitDates",
+    },
+    { owner: "user", parent: user, field: "selectedVisits" },
+    { owner: "user", parent: user, field: "visitDates" },
+    {
+      owner: "userConsumerManagement",
+      parent: user?.consumerManagement,
+      field: "selectedVisits",
+    },
+    {
+      owner: "userConsumerManagement",
+      parent: user?.consumerManagement,
+      field: "visitDates",
+    },
+    {
+      owner: "userConsumerManagement",
+      parent: user?.consumerManagement,
+      field: "selectedDates",
+    },
+    {
+      owner: "userConsumerManagement",
+      parent: user?.consumerManagement,
+      field: "dates",
+    },
+  ]
+    .map((candidate) => ({
+      ...candidate,
+      entries: candidate.parent?.[candidate.field],
+    }))
+    .filter((candidate) => Array.isArray(candidate.entries));
+
+  return (
+    candidates.find((candidate) => candidate.entries.length > 0) ||
+    candidates[0] ||
+    null
+  );
+}
+
+function getVisitDateEntries(service, user) {
+  const source = getVisitDateSource(service, user)?.entries || [];
+
+  return source
+    .map((entry, index) => {
+      const value =
+        normalizeDateValue(
+          entry?.date ||
+            entry?.visitDate ||
+            entry?.scheduledDate ||
+            entry?.dateOfVisit ||
+            entry?.selectedDate ||
+            entry?.value ||
+            entry?.visit?.date ||
+            entry?.$date ||
+            entry,
+        ) || null;
+
+      const dateKey = value ? formatDateKey(value) : "";
+      if (!dateKey) {
+        return null;
+      }
+
+      return {
+        index,
+        __visitIndex: index,
+        value: dateKey,
+        dateKey,
+        date: value,
+        isoDate: toUtcMiddayIso(dateKey),
+        id: entry?._id || entry?.id || entry?.visitId || `${index}-${dateKey}`,
+      };
+    })
+    .filter(Boolean);
+}
+
 function formatDate(value) {
   if (!value) {
     return "Not available";
   }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
+  const dateKey =
+    typeof value === "string" ? formatDateKey(value) : formatDateKey(value);
+  if (!dateKey) {
     return "Not available";
   }
 
-  return date.toLocaleDateString("en-IN", {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+
+  return parsed.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
 }
 
+function formatDateKey(date) {
+  if (!date) {
+    return "";
+  }
+
+  if (typeof date === "string") {
+    const directMatch = getDateKeyFromString(date);
+    if (directMatch) return directMatch;
+  }
+
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function shortId(value) {
   const id = String(value || "");
   return id.length > 8 ? `${id.slice(0, 4)}...${id.slice(-4)}` : id || "N/A";
+}
+
+function getConsumerNumber(user, service) {
+  return (
+    service?.consumerNumber ||
+    service?.consumerNo ||
+    user?.consumerNumber ||
+    user?.consumerNo ||
+    user?.consumer_no ||
+    "Not available"
+  );
 }
 
 function getInitials(name, email) {
@@ -214,6 +439,64 @@ function FilterChip({ item, count, active, onPress }) {
   );
 }
 
+function UserListRow({ user, service, serviceIndex, active, onViewDetails }) {
+  const userName = user?.username || user?.fullName || "Unnamed user";
+  const consumerNumber = getConsumerNumber(user, service);
+  const serviceName = service?.name || "Purchased service";
+  const statusColor = active ? COLORS.success : COLORS.danger;
+
+  return (
+    <View style={styles.listRowCard}>
+      <View style={styles.listRowTop}>
+        <View style={styles.listRowIdentity}>
+          <View style={styles.listAvatarWrap}>
+            <Text style={styles.listAvatarText}>
+              {getInitials(user?.username || user?.fullName, user?.email)}
+            </Text>
+          </View>
+
+          <View style={styles.listRowTextWrap}>
+            <Text style={styles.listUserName} numberOfLines={1}>
+              {userName}
+            </Text>
+            <Text style={styles.listConsumerText} numberOfLines={1}>
+              Consumer no: {consumerNumber}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.listStatusBadge,
+            {
+              backgroundColor: active ? COLORS.successSoft : COLORS.dangerSoft,
+            },
+          ]}
+        >
+          <View
+            style={[styles.listStatusDot, { backgroundColor: statusColor }]}
+          />
+          <Text style={[styles.listStatusText, { color: statusColor }]}>
+            {active ? "Active" : "Blocked"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.listRowMeta}>
+        <Text style={styles.listMetaText}>{serviceName}</Text>
+        <Text style={styles.listMetaText}>
+          {active ? "Active access" : "Blocked access"}
+        </Text>
+      </View>
+
+      <Pressable style={styles.listDetailsButton} onPress={onViewDetails}>
+        <Text style={styles.listDetailsButtonText}>View details</Text>
+        <Ionicons name="chevron-forward" size={16} color={COLORS.brand} />
+      </Pressable>
+    </View>
+  );
+}
+
 function ServiceCard({
   user,
   service,
@@ -221,6 +504,8 @@ function ServiceCard({
   processingKey,
   onBlock,
   onUnblock,
+  onPress,
+  onEditVisitDate,
 }) {
   const userId = getUserId(user);
   const serviceId = getServiceId(service, serviceIndex);
@@ -229,8 +514,43 @@ function ServiceCard({
   const isProcessing = processingKey === actionKey;
   const serviceAccent = active ? COLORS.success : COLORS.danger;
   const serviceSoft = active ? COLORS.successSoft : COLORS.dangerSoft;
+  const visitDates = React.useMemo(
+    () => getVisitDateEntries(service, user),
+    [service, user],
+  );
+  const [calendarEditor, setCalendarEditor] = React.useState(null);
+  console.log(
+    "ServiceCard render:",
+    visitDates.map((v) => v.date.toISOString()),
+  );
+  const openVisitCalendar = (visitIndex, currentDate) => {
+    const allSelectedVisits = visitDates.map((visit) => ({
+      date: visit.dateKey || formatDateKey(visit.date),
+      status: "Pending",
+      __visitIndex:
+        visit.__visitIndex != null
+          ? visit.__visitIndex
+          : visit.index != null
+            ? visit.index
+            : undefined,
+    }));
 
-  return (
+    const targetKey = currentDate ? formatDateKey(currentDate) : null;
+
+    const selectedVisits = targetKey
+      ? [
+          ...allSelectedVisits.filter((visit) => visit.date === targetKey),
+          ...allSelectedVisits.filter((visit) => visit.date !== targetKey),
+        ]
+      : allSelectedVisits;
+
+    setCalendarEditor({
+      visitIndex,
+      selectedVisits,
+    });
+  };
+
+  const cardContent = (
     <View style={styles.serviceCard}>
       <View
         style={[
@@ -314,6 +634,39 @@ function ServiceCard({
         />
       </View>
 
+      <View style={styles.visitDatesSection}>
+        <View style={styles.visitDatesHeaderRow}>
+          <Text style={styles.visitDatesTitle}>Visit dates</Text>
+          <View style={styles.visitCountBadge}>
+            <Text style={styles.visitCountBadgeText}>{visitDates.length}</Text>
+          </View>
+        </View>
+
+        {visitDates.length > 0 ? (
+          <View style={styles.visitDatesRow}>
+            {visitDates.map((visit) => (
+              <Pressable
+                key={visit.id}
+                style={styles.visitDateChip}
+                onPress={() => openVisitCalendar(visit.index, visit.date)}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={COLORS.brand}
+                />
+                <Text style={styles.visitDateText}>
+                  {formatDate(visit.date)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.emptyVisitText}>No visit dates added</Text>
+        )}
+        <Text style={styles.visitDatesHint}>Tap a visit date to edit it.</Text>
+      </View>
+
       {service?.blockReason ? (
         <View style={styles.blockReasonBox}>
           <Ionicons
@@ -370,6 +723,90 @@ function ServiceCard({
       </View>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <>
+        <Pressable onPress={onPress} style={styles.cardTouchTarget}>
+          {cardContent}
+        </Pressable>
+
+        <Modal
+          visible={Boolean(calendarEditor)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCalendarEditor(null)}
+        >
+          <View style={styles.dateModalOverlay}>
+            <View style={styles.dateModalCard}>
+              <CalenderVisit
+                previousData={{
+                  selectedVisits: calendarEditor?.selectedVisits || [],
+                  requestId: serviceId,
+                  applicationId: serviceId,
+                  _id: serviceId,
+                }}
+                requestId={serviceId}
+                onDataChange={({ selectedVisits }) =>
+                  setCalendarEditor((current) =>
+                    current ? { ...current, selectedVisits } : current,
+                  )
+                }
+                onServerChange={async () => {
+                  await onEditVisitDate?.();
+                }}
+                onModify={async () => {
+                  setCalendarEditor(null);
+                }}
+                submitLabel="Modify"
+                showSubmitButton
+              />
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {cardContent}
+
+      <Modal
+        visible={Boolean(calendarEditor)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarEditor(null)}
+      >
+        <View style={styles.dateModalOverlay}>
+          <View style={styles.dateModalCard}>
+            <CalenderVisit
+              previousData={{
+                selectedVisits: calendarEditor?.selectedVisits || [],
+                requestId: serviceId,
+                applicationId: serviceId,
+                _id: serviceId,
+              }}
+              requestId={serviceId}
+              onDataChange={({ selectedVisits }) =>
+                setCalendarEditor((current) =>
+                  current ? { ...current, selectedVisits } : current,
+                )
+              }
+              onServerChange={async () => {
+                await onEditVisitDate?.();
+              }}
+              onModify={async () => {
+                setCalendarEditor(null);
+              }}
+              submitLabel="Modify"
+              showSubmitButton
+            />
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 }
 
 export default function AdminActiveUserServices() {
@@ -382,6 +819,9 @@ export default function AdminActiveUserServices() {
   const [processingKey, setProcessingKey] = React.useState("");
   const [blockTarget, setBlockTarget] = React.useState(null);
   const [blockReason, setBlockReason] = React.useState("");
+  const [currentView, setCurrentView] = React.useState("categories");
+  const [selectedCategory, setSelectedCategory] = React.useState(null);
+  const [selectedService, setSelectedService] = React.useState(null);
 
   const fetchUsers = React.useCallback(async ({ refreshing = false } = {}) => {
     if (refreshing) {
@@ -400,15 +840,68 @@ export default function AdminActiveUserServices() {
         },
       );
       const payload = await response.json().catch(() => null);
-
       if (!response.ok) {
         throw new Error(payload?.message || "Unable to load users.");
       }
 
-      setUsers(normalizeUsers(payload));
+      const baseUsers = normalizeUsers(payload);
+
+      const hydratedUsers = await Promise.all(
+        baseUsers.map(async (user) => {
+          const userId = getUserId(user);
+          const email = String(user?.email || "")
+            .trim()
+            .toLowerCase();
+
+          if (!userId && !email) {
+            return user;
+          }
+
+          try {
+            const growCleaningResponse = await safeFetch(
+              getApiUrl(buildGrowCleaningUrl(user)),
+              { method: "GET" },
+            );
+            const growPayload = await growCleaningResponse
+              .json()
+              .catch(() => null);
+            console.log("Fetched users payload:", growPayload);
+
+            const applications = Array.isArray(growPayload?.data)
+              ? growPayload.data
+              : [];
+
+            if (applications.length === 0) {
+              return user;
+            }
+
+            return {
+              ...user,
+              service: applications.map((app, index) => ({
+                ...app,
+                _id: app?._id || app?.id || `service-${index}`,
+                name:
+                  app?.name ||
+                  app?.serviceName ||
+                  app?.service?.name ||
+                  "Purchased service",
+              })),
+            };
+          } catch {
+            return user;
+          }
+        }),
+      );
+
+      const nextUsers = hydratedUsers.filter(
+        (user) => getServiceList(user).length > 0,
+      );
+      setUsers(nextUsers);
+      return nextUsers;
     } catch (error) {
       setErrorMessage(error?.message || "Unable to load users.");
       setUsers([]);
+      return [];
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -420,19 +913,24 @@ export default function AdminActiveUserServices() {
   }, [fetchUsers]);
 
   const serviceRows = React.useMemo(() => {
-    return users.flatMap((user) =>
-      getServiceList(user).map((service, serviceIndex) => ({
-        user,
-        service,
-        serviceIndex,
-        active: isServiceActive(service),
-      })),
-    );
+    return users
+      .flatMap((user) =>
+        getServiceList(user)
+          .filter((service) => isServiceActivated(service))
+          .map((service, serviceIndex) => ({
+            user,
+            service,
+            serviceIndex,
+            active: !isServiceBlocked(service),
+            blocked: isServiceBlocked(service),
+          })),
+      )
+      .filter((row) => isServiceActivated(row.service));
   }, [users]);
 
   const counts = React.useMemo(() => {
     const active = serviceRows.filter((item) => item.active).length;
-    const blocked = serviceRows.length - active;
+    const blocked = serviceRows.filter((item) => item.blocked).length;
 
     return {
       all: serviceRows.length,
@@ -442,15 +940,47 @@ export default function AdminActiveUserServices() {
     };
   }, [serviceRows, users.length]);
 
+  const groupedServiceRows = React.useMemo(() => {
+    const groups = {};
+
+    serviceRows.forEach((row) => {
+      const serviceName = row?.service?.name || "Other Services";
+      if (!groups[serviceName]) {
+        groups[serviceName] = [];
+      }
+      groups[serviceName].push(row);
+    });
+
+    return groups;
+  }, [serviceRows]);
+
+  const categories = React.useMemo(
+    () =>
+      Object.keys(groupedServiceRows).map((serviceName) => ({
+        name: serviceName,
+        count: groupedServiceRows[serviceName].length,
+        rows: groupedServiceRows[serviceName],
+      })),
+    [groupedServiceRows],
+  );
+
+  const selectedCategoryRows = React.useMemo(() => {
+    if (!selectedCategory) {
+      return [];
+    }
+
+    return groupedServiceRows[selectedCategory] || [];
+  }, [groupedServiceRows, selectedCategory]);
+
   const filteredRows = React.useMemo(() => {
     const query = searchText.trim().toLowerCase();
 
-    return serviceRows.filter(({ user, service, active }) => {
+    return selectedCategoryRows.filter(({ user, service, active, blocked }) => {
       if (activeFilter === "active" && !active) {
         return false;
       }
 
-      if (activeFilter === "blocked" && active) {
+      if (activeFilter === "blocked" && !blocked) {
         return false;
       }
 
@@ -473,7 +1003,49 @@ export default function AdminActiveUserServices() {
 
       return searchable.includes(query);
     });
-  }, [activeFilter, searchText, serviceRows]);
+  }, [activeFilter, searchText, selectedCategoryRows]);
+
+  const refreshServiceVisitDates = async (user, service, serviceIndex) => {
+    const userId = getUserId(user);
+    const serviceId = getServiceId(service, serviceIndex);
+
+    if (!userId || !serviceId) {
+      Alert.alert("Missing service", "This service cannot be refreshed.");
+      return;
+    }
+
+    try {
+      // CalenderVisit already writes DELETE/PATCH changes. Never issue a
+      // second, differently-shaped PATCH here. Rehydrate from GET instead so
+      // Active Services and the open detail card use the MongoDB truth.
+      const freshUsers = await fetchUsers({ refreshing: true });
+      const freshUser = freshUsers.find(
+        (candidate) => getUserId(candidate) === userId,
+      );
+      const freshService = getServiceList(freshUser).find(
+        (candidate, index) => getServiceId(candidate, index) === serviceId,
+      );
+
+      if (freshUser && freshService) {
+        setSelectedService((current) =>
+          current && getUserId(current.user) === userId
+            ? {
+                ...current,
+                user: freshUser,
+                service: freshService,
+                active: !isServiceBlocked(freshService),
+                blocked: isServiceBlocked(freshService),
+              }
+            : current,
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "Refresh failed",
+        error?.message || "Please pull to refresh.",
+      );
+    }
+  };
 
   const patchService = async ({
     user,
@@ -493,6 +1065,8 @@ export default function AdminActiveUserServices() {
     const actionKey = `${userId}-${serviceId}`;
     setProcessingKey(actionKey);
 
+    const nextBlocked = !isServiceBlocked(service);
+
     try {
       const response = await safeFetch(
         getApiUrl(updateUserServiceApiPath(userId, serviceId)),
@@ -502,12 +1076,12 @@ export default function AdminActiveUserServices() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            active,
-            blocked: !active,
-            serviceStatus: active ? "active" : "blocked",
-            blockReason: active ? "" : reason,
-            blockedAt: active ? null : new Date().toISOString(),
-            unblockedAt: active ? new Date().toISOString() : null,
+            active: true,
+            blocked: nextBlocked,
+            serviceStatus: nextBlocked ? "blocked" : "active",
+            blockReason: nextBlocked ? reason : "",
+            blockedAt: nextBlocked ? new Date().toISOString() : null,
+            unblockedAt: nextBlocked ? null : new Date().toISOString(),
           }),
         },
       );
@@ -532,18 +1106,63 @@ export default function AdminActiveUserServices() {
                   return currentService;
                 }
 
+                const nextBlocked = !isServiceBlocked(currentService);
+
                 return {
                   ...currentService,
-                  active,
-                  blocked: !active,
-                  serviceStatus: active ? "active" : "blocked",
-                  blockReason: active ? "" : reason,
+                  active: true,
+                  blocked: nextBlocked,
+                  serviceStatus: nextBlocked ? "blocked" : "active",
+                  blockReason: nextBlocked ? reason : "",
                 };
               },
             ),
           };
         }),
       );
+
+      setSelectedService((current) => {
+        if (!current || getUserId(current.user) !== userId) {
+          return current;
+        }
+
+        const nextUser = {
+          ...current.user,
+          service: getServiceList(current.user).map((currentService, index) => {
+            if (getServiceId(currentService, index) !== serviceId) {
+              return currentService;
+            }
+
+            const nextBlocked = !isServiceBlocked(currentService);
+
+            return {
+              ...currentService,
+              active: true,
+              blocked: nextBlocked,
+              serviceStatus: nextBlocked ? "blocked" : "active",
+              blockReason: nextBlocked ? reason : "",
+            };
+          }),
+        };
+
+        const nextService = getServiceList(nextUser).find(
+          (candidate, index) => getServiceId(candidate, index) === serviceId,
+        );
+
+        if (!nextService) {
+          return { ...current, user: nextUser };
+        }
+
+        return {
+          ...current,
+          user: nextUser,
+          service: nextService,
+          active: !isServiceBlocked(nextService),
+          blocked: isServiceBlocked(nextService),
+        };
+      });
+
+      await fetchUsers({ refreshing: true });
 
       Alert.alert(
         active ? "Service unblocked" : "Service blocked",
@@ -572,7 +1191,7 @@ export default function AdminActiveUserServices() {
 
     patchService({
       ...blockTarget,
-      active: false,
+      active: true,
       reason: blockReason.trim(),
     });
   };
@@ -600,6 +1219,347 @@ export default function AdminActiveUserServices() {
     );
   };
 
+  const handleBackToCategories = () => {
+    setCurrentView("categories");
+    setSelectedCategory(null);
+    setSelectedService(null);
+    setSearchText("");
+  };
+
+  const handleBackToList = () => {
+    setCurrentView("list");
+    setSelectedService(null);
+  };
+
+  React.useEffect(() => {
+    const onHardwareBackPress = () => {
+      if (currentView === "detail") {
+        handleBackToList();
+        return true;
+      }
+
+      if (currentView === "list") {
+        handleBackToCategories();
+        return true;
+      }
+
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onHardwareBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [currentView]);
+
+  const handleCategorySelect = (categoryName) => {
+    setSelectedCategory(categoryName);
+    setSearchText("");
+    setCurrentView("list");
+  };
+
+  const handleServiceSelect = (row) => {
+    setSelectedService(row);
+    setCurrentView("detail");
+  };
+
+  const renderCategoriesView = () => (
+    <>
+      <LinearGradient
+        colors={["#102A43", "#1E5464", "#657EEA"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <TextureLines tone="dark" />
+
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBadge}>
+            <Ionicons name="people-outline" size={14} color="#FFFFFF" />
+            <Text style={styles.heroBadgeText}>
+              Active User&lsquo;s Services
+            </Text>
+          </View>
+          <View style={styles.heroIconWrap}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={22}
+              color="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.heroTitle}>Manage every purchased service.</Text>
+        <Text style={styles.heroSubtitle}>
+          Review user service access, monitor active and blocked services, and
+          restrict access when admin action is required.
+        </Text>
+
+        <View style={styles.heroStatsRow}>
+          <View style={styles.heroStatCard}>
+            <Text style={styles.heroStatValue}>{counts.users}</Text>
+            <Text style={styles.heroStatLabel}>Users</Text>
+          </View>
+          <View style={styles.heroStatCard}>
+            <Text style={styles.heroStatValue}>{counts.active}</Text>
+            <Text style={styles.heroStatLabel}>Active</Text>
+          </View>
+          <View style={styles.heroStatCard}>
+            <Text style={styles.heroStatValue}>{counts.blocked}</Text>
+            <Text style={styles.heroStatLabel}>Blocked</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <View style={styles.statsGrid}>
+        <StatCard
+          label="Purchased services"
+          value={String(counts.all)}
+          icon="layers-outline"
+          accent={COLORS.blue}
+          soft={COLORS.blueSoft}
+        />
+        <StatCard
+          label="Active access"
+          value={String(counts.active)}
+          icon="checkmark-circle-outline"
+          accent={COLORS.success}
+          soft={COLORS.successSoft}
+        />
+        <StatCard
+          label="Blocked access"
+          value={String(counts.blocked)}
+          icon="ban-outline"
+          accent={COLORS.danger}
+          soft={COLORS.dangerSoft}
+        />
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionEyebrow}>Service categories</Text>
+          <Text style={styles.sectionTitle}>
+            {categories.length}{" "}
+            {categories.length === 1 ? "category" : "categories"} available
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.refreshButton}
+          onPress={() => fetchUsers({ refreshing: true })}
+        >
+          <Ionicons name="refresh-outline" size={16} color={COLORS.brand} />
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator color={COLORS.brand} />
+          <Text style={styles.stateTitle}>Loading user services</Text>
+          <Text style={styles.stateText}>
+            Fetching users and purchased services.
+          </Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrapDanger}>
+            <Ionicons name="warning-outline" size={24} color={COLORS.danger} />
+          </View>
+          <Text style={styles.stateTitle}>Could not load services</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable style={styles.retryButton} onPress={() => fetchUsers()}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : categories.length === 0 ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrap}>
+            <Ionicons name="file-tray-outline" size={24} color={COLORS.brand} />
+          </View>
+          <Text style={styles.stateTitle}>No services found</Text>
+          <Text style={styles.stateText}>
+            No purchased services are currently available.
+          </Text>
+        </View>
+      ) : (
+        categories.map((category) => (
+          <Pressable
+            key={category.name}
+            style={styles.categoryCard}
+            onPress={() => handleCategorySelect(category.name)}
+          >
+            <View style={styles.categoryAccent} />
+            <View style={styles.categoryContent}>
+              <View style={styles.categoryIconWrap}>
+                <Ionicons
+                  name={
+                    category.name?.toLowerCase().includes("solar")
+                      ? "sunny-outline"
+                      : category.name?.toLowerCase().includes("clean")
+                        ? "sparkles-outline"
+                        : category.name?.toLowerCase().includes("electric")
+                          ? "flash-outline"
+                          : "layers-outline"
+                  }
+                  size={18}
+                  color={COLORS.brand}
+                />
+              </View>
+              <View style={styles.categoryTextWrap}>
+                <Text style={styles.categoryName}>{category.name}</Text>
+                <Text style={styles.categoryCount}>
+                  {category.count}{" "}
+                  {category.count === 1 ? "active user" : "active users"}
+                </Text>
+              </View>
+              <View style={styles.categoryArrow}>
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={COLORS.brand}
+                />
+              </View>
+            </View>
+          </Pressable>
+        ))
+      )}
+    </>
+  );
+
+  const renderListView = () => (
+    <>
+      <View style={styles.backHeader}>
+        <Pressable style={styles.backButton} onPress={handleBackToCategories}>
+          <Ionicons name="arrow-back" size={20} color={COLORS.brand} />
+          <Text style={styles.backButtonText}>Categories</Text>
+        </Pressable>
+      </View>
+
+      <LinearGradient
+        colors={["#102A43", "#1E5464", "#657EEA"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <TextureLines tone="dark" />
+
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBadge}>
+            <Ionicons name="layers-outline" size={14} color="#FFFFFF" />
+            <Text style={styles.heroBadgeText}>{selectedCategory}</Text>
+          </View>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="people-outline" size={22} color="#FFFFFF" />
+          </View>
+        </View>
+
+        <Text style={styles.heroTitle}>{filteredRows.length} active users</Text>
+        <Text style={styles.heroSubtitle}>
+          Select a user to review their service status, details, and access
+          control.
+        </Text>
+      </LinearGradient>
+
+      <View style={styles.toolbarCard}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search-outline" size={17} color={COLORS.faint} />
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search by name, mobile or consumer no"
+            placeholderTextColor={COLORS.faint}
+            style={styles.searchInput}
+          />
+          {searchText ? (
+            <Pressable onPress={() => setSearchText("")}>
+              <Ionicons name="close-circle" size={17} color={COLORS.faint} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterList}
+        >
+          {FILTERS.map((filter) => (
+            <FilterChip
+              key={filter.key}
+              item={filter}
+              count={
+                filter.key === "all"
+                  ? selectedCategoryRows.length
+                  : filter.key === "active"
+                    ? selectedCategoryRows.filter((item) => item.active).length
+                    : selectedCategoryRows.filter((item) => !item.active).length
+              }
+              active={activeFilter === filter.key}
+              onPress={() => setActiveFilter(filter.key)}
+            />
+          ))}
+        </ScrollView>
+      </View>
+
+      {filteredRows.length === 0 ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrap}>
+            <Ionicons name="file-tray-outline" size={24} color={COLORS.brand} />
+          </View>
+          <Text style={styles.stateTitle}>No matching users</Text>
+          <Text style={styles.stateText}>
+            Adjust your search or filter to find users in this service category.
+          </Text>
+        </View>
+      ) : (
+        filteredRows.map(({ user, service, serviceIndex, active }) => (
+          <UserListRow
+            key={`${getUserId(user)}-${getServiceId(service, serviceIndex)}`}
+            user={user}
+            service={service}
+            serviceIndex={serviceIndex}
+            active={active}
+            onViewDetails={() =>
+              handleServiceSelect({ user, service, serviceIndex, active })
+            }
+          />
+        ))
+      )}
+    </>
+  );
+
+  const renderDetailView = () => {
+    if (!selectedService) {
+      return null;
+    }
+
+    const { user, service, serviceIndex } = selectedService;
+
+    return (
+      <>
+        <View style={styles.backHeader}>
+          <Pressable style={styles.backButton} onPress={handleBackToList}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.brand} />
+            <Text style={styles.backButtonText}>Back to list</Text>
+          </Pressable>
+        </View>
+
+        <ServiceCard
+          user={user}
+          service={service}
+          serviceIndex={serviceIndex}
+          processingKey={processingKey}
+          onBlock={openBlockModal}
+          onUnblock={handleUnblock}
+          onEditVisitDate={async () =>
+            refreshServiceVisitDates(user, service, serviceIndex)
+          }
+        />
+      </>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.brandDark} />
@@ -617,171 +1577,9 @@ export default function AdminActiveUserServices() {
           />
         }
       >
-        <LinearGradient
-          colors={["#102A43", "#1E5464", "#657EEA"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          <TextureLines tone="dark" />
-
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroBadge}>
-              <Ionicons name="people-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.heroBadgeText}>Active User's Services</Text>
-            </View>
-            <View style={styles.heroIconWrap}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={22}
-                color="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          <Text style={styles.heroTitle}>Manage every purchased service.</Text>
-          <Text style={styles.heroSubtitle}>
-            Review user service access, monitor active and blocked services, and
-            restrict access when admin action is required.
-          </Text>
-
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.users}</Text>
-              <Text style={styles.heroStatLabel}>Users</Text>
-            </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.active}</Text>
-              <Text style={styles.heroStatLabel}>Active</Text>
-            </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.blocked}</Text>
-              <Text style={styles.heroStatLabel}>Blocked</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.statsGrid}>
-          <StatCard
-            label="Purchased services"
-            value={String(counts.all)}
-            icon="layers-outline"
-            accent={COLORS.blue}
-            soft={COLORS.blueSoft}
-          />
-          <StatCard
-            label="Active access"
-            value={String(counts.active)}
-            icon="checkmark-circle-outline"
-            accent={COLORS.success}
-            soft={COLORS.successSoft}
-          />
-          <StatCard
-            label="Blocked access"
-            value={String(counts.blocked)}
-            icon="ban-outline"
-            accent={COLORS.danger}
-            soft={COLORS.dangerSoft}
-          />
-        </View>
-
-        <View style={styles.toolbarCard}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={17} color={COLORS.faint} />
-            <TextInput
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholder="Search user, email, service, or ID"
-              placeholderTextColor={COLORS.faint}
-              style={styles.searchInput}
-            />
-            {searchText ? (
-              <Pressable onPress={() => setSearchText("")}>
-                <Ionicons name="close-circle" size={17} color={COLORS.faint} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterList}
-          >
-            {FILTERS.map((filter) => (
-              <FilterChip
-                key={filter.key}
-                item={filter}
-                count={counts[filter.key]}
-                active={activeFilter === filter.key}
-                onPress={() => setActiveFilter(filter.key)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>Service directory</Text>
-            <Text style={styles.sectionTitle}>Purchased services by user</Text>
-          </View>
-          <Pressable
-            style={styles.refreshButton}
-            onPress={() => fetchUsers({ refreshing: true })}
-          >
-            <Ionicons name="refresh-outline" size={16} color={COLORS.brand} />
-          </Pressable>
-        </View>
-
-        {isLoading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator color={COLORS.brand} />
-            <Text style={styles.stateTitle}>Loading user services</Text>
-            <Text style={styles.stateText}>
-              Fetching users and purchased services.
-            </Text>
-          </View>
-        ) : errorMessage ? (
-          <View style={styles.stateCard}>
-            <View style={styles.stateIconWrapDanger}>
-              <Ionicons
-                name="warning-outline"
-                size={24}
-                color={COLORS.danger}
-              />
-            </View>
-            <Text style={styles.stateTitle}>Could not load services</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable style={styles.retryButton} onPress={() => fetchUsers()}>
-              <Text style={styles.retryButtonText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : filteredRows.length === 0 ? (
-          <View style={styles.stateCard}>
-            <View style={styles.stateIconWrap}>
-              <Ionicons
-                name="file-tray-outline"
-                size={24}
-                color={COLORS.brand}
-              />
-            </View>
-            <Text style={styles.stateTitle}>No services found</Text>
-            <Text style={styles.stateText}>
-              Adjust your search or filter to view matching user services.
-            </Text>
-          </View>
-        ) : (
-          filteredRows.map(({ user, service, serviceIndex }) => (
-            <ServiceCard
-              key={`${getUserId(user)}-${getServiceId(service, serviceIndex)}`}
-              user={user}
-              service={service}
-              serviceIndex={serviceIndex}
-              processingKey={processingKey}
-              onBlock={openBlockModal}
-              onUnblock={handleUnblock}
-            />
-          ))
-        )}
+        {currentView === "categories" && renderCategoriesView()}
+        {currentView === "list" && renderListView()}
+        {currentView === "detail" && renderDetailView()}
       </ScrollView>
 
       <Modal
@@ -921,7 +1719,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
   heroIconWrap: {
@@ -936,16 +1734,16 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "900",
     marginTop: 20,
     maxWidth: "94%",
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.78)",
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "600",
     marginTop: 8,
     maxWidth: "96%",
@@ -965,12 +1763,12 @@ const styles = StyleSheet.create({
   },
   heroStatValue: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: "900",
   },
   heroStatLabel: {
     color: "rgba(255,255,255,0.72)",
-    fontSize: 9.5,
+    fontSize: 8.75,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1004,13 +1802,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "900",
   },
   statLabel: {
     color: COLORS.muted,
-    fontSize: 9.5,
-    lineHeight: 14,
+    fontSize: 8.75,
+    lineHeight: 13,
     fontWeight: "800",
     marginTop: 2,
   },
@@ -1041,7 +1839,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     paddingVertical: 0,
   },
@@ -1066,7 +1864,7 @@ const styles = StyleSheet.create({
   },
   filterText: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
   filterTextActive: {
@@ -1074,7 +1872,7 @@ const styles = StyleSheet.create({
   },
   filterCount: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
   filterCountActive: {
@@ -1088,7 +1886,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -1096,8 +1894,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "900",
   },
   refreshButton: {
@@ -1144,14 +1942,14 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "900",
     marginTop: 10,
   },
   stateText: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     textAlign: "center",
     fontWeight: "600",
     marginTop: 5,
@@ -1165,7 +1963,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   serviceCard: {
@@ -1182,6 +1980,113 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
+  },
+  cardTouchTarget: {
+    borderRadius: 18,
+  },
+  listRowCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
+  },
+  listRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  listRowIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  listAvatarWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  listAvatarText: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  listRowTextWrap: {
+    flex: 1,
+  },
+  listUserName: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  listConsumerText: {
+    color: COLORS.muted,
+    fontSize: 9.5,
+    lineHeight: 14,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  listStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 999,
+    gap: 5,
+  },
+  listStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  listStatusText: {
+    fontSize: 8.5,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  listRowMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  listMetaText: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  listDetailsButton: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 10,
+    backgroundColor: COLORS.blueSoft,
+    borderWidth: 1,
+    borderColor: "rgba(101,126,234,0.18)",
+  },
+  listDetailsButtonText: {
+    color: COLORS.brand,
+    fontSize: 10,
+    fontWeight: "900",
   },
   serviceAccentRail: {
     position: "absolute",
@@ -1221,7 +2126,7 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     color: COLORS.blue,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   userTextWrap: {
@@ -1229,13 +2134,13 @@ const styles = StyleSheet.create({
   },
   userName: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "900",
   },
   userMeta: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1253,7 +2158,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusBadgeText: {
-    fontSize: 9,
+    fontSize: 8.25,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -1281,13 +2186,13 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
   },
   serviceSubText: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1296,6 +2201,126 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     marginTop: 11,
+  },
+  visitDatesSection: {
+    marginTop: 13,
+    borderRadius: 14,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+  },
+  visitDatesHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  visitDatesTitle: {
+    color: COLORS.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  visitCountBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  visitCountBadgeText: {
+    color: COLORS.brand,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  visitDatesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  visitDateChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  visitDateText: {
+    color: COLORS.brand,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  emptyVisitText: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  visitDatesHint: {
+    color: COLORS.faint,
+    fontSize: 8.5,
+    fontWeight: "700",
+    marginTop: 10,
+  },
+  dateModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.55)",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  dateModalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  dateModalTitle: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "900",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  dateModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+  dateModalCancel: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateModalCancelText: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  dateModalConfirm: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.brand,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateModalConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
   },
   detailPill: {
     width: "48.5%",
@@ -1311,13 +2336,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   detailPillValue: {
-    fontSize: 10.5,
+    fontSize: 9.5,
     fontWeight: "900",
     textTransform: "capitalize",
   },
   detailPillLabel: {
     color: COLORS.muted,
-    fontSize: 9,
+    fontSize: 8.25,
     fontWeight: "800",
     marginTop: 1,
   },
@@ -1333,8 +2358,8 @@ const styles = StyleSheet.create({
   blockReasonText: {
     flex: 1,
     color: COLORS.danger,
-    fontSize: 10.5,
-    lineHeight: 15,
+    fontSize: 9.5,
+    lineHeight: 14,
     fontWeight: "700",
   },
   cardFooter: {
@@ -1352,7 +2377,7 @@ const styles = StyleSheet.create({
   },
   updatedText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "800",
   },
   blockButton: {
@@ -1369,7 +2394,7 @@ const styles = StyleSheet.create({
   },
   blockButtonText: {
     color: COLORS.danger,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   unblockButton: {
@@ -1384,7 +2409,7 @@ const styles = StyleSheet.create({
   },
   unblockButtonText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   disabledButton: {
@@ -1412,13 +2437,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "900",
   },
   modalSubtitle: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "700",
     marginTop: 4,
     maxWidth: 260,
@@ -1446,12 +2471,12 @@ const styles = StyleSheet.create({
   },
   blockTargetTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   blockTargetSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1464,8 +2489,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     color: COLORS.text,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: "700",
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1487,7 +2512,7 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     color: COLORS.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   modalConfirmButton: {
@@ -1500,7 +2525,91 @@ const styles = StyleSheet.create({
   },
   modalConfirmText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
+  },
+  backHeader: {
+    marginBottom: 12,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignSelf: "flex-start",
+  },
+  backButtonText: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  categoryCard: {
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    backgroundColor: COLORS.surface,
+    position: "relative",
+  },
+  categoryAccent: {
+    position: "absolute",
+    left: 0,
+    top: 16,
+    bottom: 16,
+    width: 4,
+    borderTopRightRadius: 999,
+    borderBottomRightRadius: 999,
+    backgroundColor: COLORS.brand,
+  },
+  categoryContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 10,
+  },
+  categoryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  categoryTextWrap: {
+    flex: 1,
+  },
+  categoryName: {
+    color: COLORS.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+  categoryCount: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  categoryArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

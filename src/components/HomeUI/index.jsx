@@ -4,14 +4,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Animated,
-  Easing,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Animated,
+    Easing,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/auth-context";
@@ -59,22 +59,22 @@ const adminMetrics = [
     route: "/active-services",
   },
   {
-    label: "Manage Technician",
+    label: "Approved Requests",
     value: "07",
-    trend: "Needs follow-up",
-    icon: "person-add-outline",
-    accent: COLORS.amber,
-    soft: COLORS.amberSoft,
-    route: "/manage-technician",
+    trend: "Ready to proceed",
+    icon: "checkmark-circle-outline",
+    accent: COLORS.success,
+    soft: COLORS.successSoft,
+    route: "/admin/approved-requests",
   },
   {
-    label: "Open Complaints",
+    label: "Reject Requests",
     value: "12",
-    trend: "4 high priority",
-    icon: "chatbubble-ellipses-outline",
+    trend: "Needs review",
+    icon: "close-circle-outline",
     accent: COLORS.danger,
     soft: COLORS.dangerSoft,
-    route: "/complaints",
+    route: "/admin/reject-requests",
   },
 ];
 
@@ -359,7 +359,12 @@ function QueueItem({ item, onPress }) {
 function ActivityItem({ item, isLast }) {
   return (
     <View style={[styles.activityItem, isLast && styles.activityItemLast]}>
-      <View style={[styles.activityIconWrap, { backgroundColor: `${item.accent}14` }]}>
+      <View
+        style={[
+          styles.activityIconWrap,
+          { backgroundColor: `${item.accent}14` },
+        ]}
+      >
         <Ionicons name={item.icon} size={16} color={item.accent} />
       </View>
       <View style={styles.activityTextWrap}>
@@ -384,8 +389,8 @@ function AdminHomeUI() {
     }).start();
   }, [revealAnim]);
 
-  const adminName = 'Mr. Shahezad'
-    // session?.username?.trim() || session?.email?.split("@")?.[0] || "Admin";
+  const adminName = "Mr. Shahezad";
+  // session?.username?.trim() || session?.email?.split("@")?.[0] || "Admin";
 
   const revealStyle = {
     opacity: revealAnim,
@@ -436,7 +441,7 @@ function AdminHomeUI() {
           >
             <TextureLines tone="dark" />
 
-            <View style={styles.heroTopRow}>
+            {/* <View style={styles.heroTopRow}>
               <View style={styles.heroBadge}>
                 <Ionicons name="speedometer-outline" size={14} color="#FFFFFF" />
                 <Text style={styles.heroBadgeText}>Live Operations</Text>
@@ -444,15 +449,17 @@ function AdminHomeUI() {
               <View style={styles.heroIconWrap}>
                 <Ionicons name="analytics-outline" size={22} color="#FFFFFF" />
               </View>
-            </View>
+            </View> */}
 
-            <Text style={styles.heroTitle}>Manage service operations from one place.</Text>
+            <Text style={styles.heroTitle}>
+              Manage service operations from one place.
+            </Text>
             <Text style={styles.heroSubtitle}>
-              Requests, payments, complaints, technicians, and service queues are
-              organized for fast admin review.
+              Requests, payments, complaints, technicians, and service queues
+              are organized for fast admin review.
             </Text>
 
-            <View style={styles.heroFooter}>
+            {/* <View style={styles.heroFooter}>
               <Pressable
                 style={styles.heroPrimaryButton}
                 onPress={() => router.push("/admin/requests")}
@@ -468,7 +475,7 @@ function AdminHomeUI() {
                 <Ionicons name="checkbox-outline" size={15} color="#FFFFFF" />
                 <Text style={styles.heroSecondaryButtonText}>Tasks</Text>
               </Pressable>
-            </View>
+            </View> */}
           </LinearGradient>
         </Animated.View>
 
@@ -592,14 +599,14 @@ const styles = StyleSheet.create({
   },
   headerEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     letterSpacing: 0.9,
     textTransform: "uppercase",
   },
   headerTitle: {
     color: COLORS.text,
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "900",
     marginTop: 3,
   },
@@ -682,7 +689,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
   heroIconWrap: {
@@ -697,16 +704,16 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "900",
     marginTop: 20,
     maxWidth: "94%",
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.78)",
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "600",
     marginTop: 8,
     maxWidth: "96%",
@@ -728,7 +735,7 @@ const styles = StyleSheet.create({
   },
   heroPrimaryButtonText: {
     color: COLORS.brandDark,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   heroSecondaryButton: {
@@ -746,7 +753,7 @@ const styles = StyleSheet.create({
   },
   heroSecondaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   sectionHeader: {
@@ -762,7 +769,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     letterSpacing: 0.8,
     textTransform: "uppercase",
@@ -770,8 +777,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
   },
   sectionAction: {
@@ -783,7 +790,7 @@ const styles = StyleSheet.create({
   },
   sectionActionText: {
     color: COLORS.brand,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   metricsGrid: {
@@ -821,19 +828,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   metricValue: {
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: "900",
   },
   metricLabel: {
     color: COLORS.text,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
     marginTop: 3,
   },
   metricTrend: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -871,13 +878,13 @@ const styles = StyleSheet.create({
   },
   quickActionTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   quickActionSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 3,
     paddingRight: 10,
@@ -929,20 +936,20 @@ const styles = StyleSheet.create({
   },
   pipelineStatusText: {
     color: COLORS.success,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   pipelineTitle: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
   },
   pipelineSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 4,
   },
@@ -954,12 +961,12 @@ const styles = StyleSheet.create({
   },
   pipelineStatValue: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
   },
   pipelineStatLabel: {
     color: COLORS.muted,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "800",
     marginTop: 2,
   },
@@ -1000,13 +1007,13 @@ const styles = StyleSheet.create({
   },
   queueTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   queueSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1016,7 +1023,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   queueTimeText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
   },
   activityCard: {
@@ -1054,13 +1061,13 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   activitySubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: "700",
     marginTop: 3,
   },

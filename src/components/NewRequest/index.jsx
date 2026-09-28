@@ -1,19 +1,21 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -40,9 +42,6 @@ const COLORS = {
   cyanSoft: "#ECFEFF",
   shadow: "#94A3B8",
 };
-
-const PENDING_REQUESTS_API_PATH = "/api/admin/requests?status=pending";
-const updateRequestApiPath = (requestId) => `/api/admin/requests/${requestId}`;
 
 function getRequestId(request) {
   return (
@@ -142,6 +141,40 @@ function getVisitSummary(request) {
   };
 }
 
+function getServiceIcon(serviceName) {
+  const name = String(serviceName || "").toLowerCase();
+  if (name.includes("cleaning") && name.includes("amc")) {
+    return "leaf-outline";
+  }
+  if (name.includes("cleaning")) {
+    return "water-outline";
+  }
+  if (name.includes("sprinkler")) {
+    return "rainy-outline";
+  }
+  if (name.includes("amc")) {
+    return "shield-checkmark-outline";
+  }
+  return "construct-outline";
+}
+
+function getServiceColor(serviceName) {
+  const name = String(serviceName || "").toLowerCase();
+  if (name.includes("cleaning") && name.includes("amc")) {
+    return { accent: COLORS.success, soft: COLORS.successSoft };
+  }
+  if (name.includes("cleaning")) {
+    return { accent: COLORS.cyan, soft: COLORS.cyanSoft };
+  }
+  if (name.includes("sprinkler")) {
+    return { accent: COLORS.blue, soft: COLORS.blueSoft };
+  }
+  if (name.includes("amc")) {
+    return { accent: COLORS.amber, soft: COLORS.amberSoft };
+  }
+  return { accent: COLORS.brand, soft: COLORS.surfaceAlt };
+}
+
 function DetailRow({ icon, label, value, accent = COLORS.brand }) {
   return (
     <View style={styles.detailRow}>
@@ -175,6 +208,74 @@ function TextureLines() {
       <View style={styles.textureLineTwo} />
       <View style={styles.textureLineThree} />
     </View>
+  );
+}
+
+function CategoryCard({ category, onPress }) {
+  const colors = getServiceColor(category.name);
+  const icon = getServiceIcon(category.name);
+
+  return (
+    <Pressable
+      style={[styles.categoryCard, { backgroundColor: colors.soft }]}
+      onPress={onPress}
+    >
+      <View style={styles.categoryContent}>
+        <View
+          style={[styles.categoryIconWrap, { backgroundColor: COLORS.surface }]}
+        >
+          <Ionicons name={icon} size={20} color={colors.accent} />
+        </View>
+        <View style={styles.categoryTextWrap}>
+          <Text style={styles.categoryName} numberOfLines={2}>
+            {category.name}
+          </Text>
+          <Text style={styles.categoryCount}>
+            {category.count} {category.count === 1 ? "request" : "requests"}
+          </Text>
+        </View>
+        <View style={styles.categoryArrow}>
+          <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+        </View>
+      </View>
+      <View
+        style={[styles.categoryAccent, { backgroundColor: colors.accent }]}
+      />
+    </Pressable>
+  );
+}
+
+function ListItemCard({ request, onPress }) {
+  return (
+    <Pressable style={styles.listItemCard} onPress={onPress}>
+      <View style={styles.listItemLeft}>
+        <View style={styles.listItemAvatar}>
+          <Ionicons name="person-outline" size={20} color={COLORS.brand} />
+        </View>
+        <View style={styles.listItemTextWrap}>
+          <Text style={styles.listItemName} numberOfLines={1}>
+            {request?.fullName || "Unnamed customer"}
+          </Text>
+          <Text style={styles.listItemMeta} numberOfLines={1}>
+            {request?.mobileNumber || "No mobile"} •{" "}
+            {request?.city || "No city"}
+          </Text>
+          <Text style={styles.listItemAmount}>
+            {formatCurrency(request?.totalAmount)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.listItemRight}>
+        <View style={styles.listItemBadge}>
+          <View style={styles.listItemDot} />
+          <Text style={styles.listItemBadgeText}>Pending</Text>
+        </View>
+        <Pressable style={styles.listItemViewButton} onPress={onPress}>
+          <Text style={styles.listItemViewText}>View detail</Text>
+          <Ionicons name="arrow-forward" size={14} color={COLORS.brand} />
+        </Pressable>
+      </View>
+    </Pressable>
   );
 }
 
@@ -443,6 +544,12 @@ export default function AdminNewRequests() {
   const [visitModalVisits, setVisitModalVisits] = React.useState([]);
   const [isVisitModalVisible, setIsVisitModalVisible] = React.useState(false);
 
+  // New navigation states
+  const [currentView, setCurrentView] = React.useState("categories"); // categories | list | detail
+  const [selectedCategory, setSelectedCategory] = React.useState(null);
+  const [selectedRequest, setSelectedRequest] = React.useState(null);
+  const [searchTerm, setSearchTerm] = React.useState("");
+
   const fetchPendingRequests = React.useCallback(
     async ({ refreshing = false } = {}) => {
       if (refreshing) {
@@ -485,15 +592,50 @@ export default function AdminNewRequests() {
     fetchPendingRequests();
   }, [fetchPendingRequests]);
 
-  const totalPendingAmount = requests.reduce(
-    (sum, request) => sum + Number(request?.totalAmount || 0),
-    0,
-  );
+  // Group requests by service category
+  const categorizedRequests = React.useMemo(() => {
+    const categories = {};
+    requests.forEach((request) => {
+      const serviceName = request?.serviceName || "Other Services";
+      if (!categories[serviceName]) {
+        categories[serviceName] = [];
+      }
+      categories[serviceName].push(request);
+    });
+    return categories;
+  }, [requests]);
 
-  const paymentPendingCount = requests.filter(
-    (request) =>
-      String(request?.paymentMethod || "").toLowerCase() === "pending",
-  ).length;
+  const categories = Object.keys(categorizedRequests).map((serviceName) => ({
+    name: serviceName,
+    count: categorizedRequests[serviceName].length,
+    requests: categorizedRequests[serviceName],
+  }));
+
+  const filteredRequests = React.useMemo(() => {
+    const baseRequests = selectedCategory
+      ? categorizedRequests[selectedCategory] || []
+      : [];
+
+    const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
+    if (!normalizedSearchTerm) {
+      return baseRequests;
+    }
+
+    return baseRequests.filter((request) => {
+      const fullName = String(request?.fullName || "").toLowerCase();
+      const mobileNumber = String(request?.mobileNumber || "").toLowerCase();
+      const consumerNumber = String(
+        request?.consumerNumber || request?.consumerNo || "",
+      ).toLowerCase();
+
+      return (
+        fullName.includes(normalizedSearchTerm) ||
+        mobileNumber.includes(normalizedSearchTerm) ||
+        consumerNumber.includes(normalizedSearchTerm)
+      );
+    });
+  }, [categorizedRequests, searchTerm, selectedCategory]);
 
   const updateRequestStatus = async (
     request,
@@ -589,6 +731,300 @@ export default function AdminNewRequests() {
     });
   };
 
+  const handleBackToCategories = () => {
+    setCurrentView("categories");
+    setSelectedCategory(null);
+    setSelectedRequest(null);
+    setSearchTerm("");
+  };
+
+  const handleBackToList = () => {
+    setCurrentView("list");
+    setSelectedRequest(null);
+  };
+
+  React.useEffect(() => {
+    const onHardwareBackPress = () => {
+      if (currentView === "detail") {
+        handleBackToList();
+        return true;
+      }
+
+      if (currentView === "list") {
+        handleBackToCategories();
+        return true;
+      }
+
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onHardwareBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [currentView]);
+
+  const handleCategorySelect = (categoryName) => {
+    setSelectedCategory(categoryName);
+    setSearchTerm("");
+    setCurrentView("list");
+  };
+
+  const handleRequestSelect = (request) => {
+    setSelectedRequest(request);
+    setCurrentView("detail");
+  };
+
+  const renderCategoriesView = () => (
+    <>
+      <LinearGradient
+        colors={["#102A43", "#1E5464", "#657EEA"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View pointerEvents="none" style={styles.heroTexture}>
+          <View style={styles.heroLineOne} />
+          <View style={styles.heroLineTwo} />
+          <View style={styles.heroLineThree} />
+        </View>
+
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBadge}>
+            <Ionicons name="file-tray-full-outline" size={14} color="#FFFFFF" />
+            <Text style={styles.heroBadgeText}>New Request Queue</Text>
+          </View>
+          <View style={styles.heroIconWrap}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={22}
+              color="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.heroTitle}>
+          Select a service category to review
+        </Text>
+        <Text style={styles.heroSubtitle}>
+          Choose from available service types to view pending requests that need
+          your approval.
+        </Text>
+      </LinearGradient>
+
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionEyebrow}>Service categories</Text>
+          <Text style={styles.sectionTitle}>
+            {categories.length}{" "}
+            {categories.length === 1 ? "category" : "categories"} available
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.refreshButton}
+          onPress={() => fetchPendingRequests({ refreshing: true })}
+        >
+          <Ionicons name="refresh-outline" size={16} color={COLORS.brand} />
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator color={COLORS.brand} />
+          <Text style={styles.stateTitle}>Loading categories</Text>
+          <Text style={styles.stateText}>
+            Fetching service categories with pending requests.
+          </Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrapDanger}>
+            <Ionicons name="warning-outline" size={24} color={COLORS.danger} />
+          </View>
+          <Text style={styles.stateTitle}>Could not load categories</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable
+            style={styles.retryButton}
+            onPress={() => fetchPendingRequests()}
+          >
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : categories.length === 0 ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="checkmark-done-outline"
+              size={24}
+              color={COLORS.success}
+            />
+          </View>
+          <Text style={styles.stateTitle}>No pending requests</Text>
+          <Text style={styles.stateText}>
+            New applications will appear here when their status is pending.
+          </Text>
+        </View>
+      ) : (
+        categories.map((category, index) => (
+          <CategoryCard
+            key={`${category.name}-${index}`}
+            category={category}
+            onPress={() => handleCategorySelect(category.name)}
+          />
+        ))
+      )}
+    </>
+  );
+
+  const renderListView = () => (
+    <>
+      <View style={styles.backHeader}>
+        <Pressable style={styles.backButton} onPress={handleBackToCategories}>
+          <Ionicons name="arrow-back" size={20} color={COLORS.brand} />
+          <Text style={styles.backButtonText}>Categories</Text>
+        </Pressable>
+      </View>
+
+      <LinearGradient
+        colors={
+          getServiceColor(selectedCategory).accent === COLORS.cyan
+            ? ["#06B6D4", "#0891B2", "#0E7490"]
+            : getServiceColor(selectedCategory).accent === COLORS.success
+              ? ["#10B981", "#059669", "#047857"]
+              : getServiceColor(selectedCategory).accent === COLORS.blue
+                ? ["#657EEA", "#5A67D8", "#4C51BF"]
+                : ["#F59E0B", "#D97706", "#B45309"]
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View pointerEvents="none" style={styles.heroTexture}>
+          <View style={styles.heroLineOne} />
+          <View style={styles.heroLineTwo} />
+          <View style={styles.heroLineThree} />
+        </View>
+
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBadge}>
+            <Ionicons
+              name={getServiceIcon(selectedCategory)}
+              size={14}
+              color="#FFFFFF"
+            />
+            <Text style={styles.heroBadgeText}>{selectedCategory}</Text>
+          </View>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="list-outline" size={22} color="#FFFFFF" />
+          </View>
+        </View>
+
+        <Text style={styles.heroTitle}>
+          {filteredRequests.length} pending{" "}
+          {filteredRequests.length === 1 ? "request" : "requests"}
+        </Text>
+        <Text style={styles.heroSubtitle}>
+          Select any request to view complete details and approve or reject.
+        </Text>
+      </LinearGradient>
+
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionEyebrow}>Consumer list</Text>
+          <Text style={styles.sectionTitle}>
+            Requests in {selectedCategory}
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.refreshButton}
+          onPress={() => fetchPendingRequests({ refreshing: true })}
+        >
+          <Ionicons name="refresh-outline" size={16} color={COLORS.brand} />
+        </Pressable>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Ionicons name="search-outline" size={16} color={COLORS.muted} />
+        <TextInput
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholder="Search by name, mobile or consumer no"
+          placeholderTextColor={COLORS.faint}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchTerm ? (
+          <Pressable onPress={() => setSearchTerm("")}>
+            <Ionicons name="close-circle" size={16} color={COLORS.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {filteredRequests.length === 0 ? (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="checkmark-done-outline"
+              size={24}
+              color={COLORS.success}
+            />
+          </View>
+          <Text style={styles.stateTitle}>
+            {searchTerm
+              ? "No matching requests"
+              : "No requests in this category"}
+          </Text>
+          <Text style={styles.stateText}>
+            {searchTerm
+              ? "Try another name, mobile number, or consumer number."
+              : "All requests for this service have been processed."}
+          </Text>
+        </View>
+      ) : (
+        filteredRequests.map((request, index) => (
+          <ListItemCard
+            key={getRequestId(request) || `${request?.mobileNumber}-${index}`}
+            request={request}
+            onPress={() => handleRequestSelect(request)}
+          />
+        ))
+      )}
+    </>
+  );
+
+  const renderDetailView = () => {
+    if (!selectedRequest) return null;
+
+    return (
+      <>
+        <View style={styles.backHeader}>
+          <Pressable style={styles.backButton} onPress={handleBackToList}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.brand} />
+            <Text style={styles.backButtonText}>Back to list</Text>
+          </Pressable>
+        </View>
+
+        <RequestCard
+          request={selectedRequest}
+          index={filteredRequests.indexOf(selectedRequest)}
+          processingId={processingId}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onOpenPhoto={(photoUrl) => setPreviewPhotoUrl(photoUrl || "")}
+          onOpenVisits={(visits) => {
+            setVisitModalVisits(Array.isArray(visits) ? visits : []);
+            setIsVisitModalVisible(true);
+          }}
+        />
+      </>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.brandDark} />
@@ -606,135 +1042,9 @@ export default function AdminNewRequests() {
           />
         }
       >
-        <LinearGradient
-          colors={["#102A43", "#1E5464", "#657EEA"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          <View pointerEvents="none" style={styles.heroTexture}>
-            <View style={styles.heroLineOne} />
-            <View style={styles.heroLineTwo} />
-            <View style={styles.heroLineThree} />
-          </View>
-
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroBadge}>
-              <Ionicons
-                name="file-tray-full-outline"
-                size={14}
-                color="#FFFFFF"
-              />
-              <Text style={styles.heroBadgeText}>New Request Queue</Text>
-            </View>
-            <View style={styles.heroIconWrap}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={22}
-                color="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          <Text style={styles.heroTitle}>
-            Review pending service applications.
-          </Text>
-          <Text style={styles.heroSubtitle}>
-            Verify customer details, payment status, service scope, visit plan,
-            location data, and site photo before approval.
-          </Text>
-
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{requests.length}</Text>
-              <Text style={styles.heroStatLabel}>Pending</Text>
-            </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>
-                {formatCurrency(totalPendingAmount)}
-              </Text>
-              <Text style={styles.heroStatLabel}>Total value</Text>
-            </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{paymentPendingCount}</Text>
-              <Text style={styles.heroStatLabel}>Payment pending</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>Pending approvals</Text>
-            <Text style={styles.sectionTitle}>
-              Requests waiting for admin review
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.refreshButton}
-            onPress={() => fetchPendingRequests({ refreshing: true })}
-          >
-            <Ionicons name="refresh-outline" size={16} color={COLORS.brand} />
-          </Pressable>
-        </View>
-
-        {isLoading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator color={COLORS.brand} />
-            <Text style={styles.stateTitle}>Loading pending requests</Text>
-            <Text style={styles.stateText}>
-              Fetching applications with pending status.
-            </Text>
-          </View>
-        ) : errorMessage ? (
-          <View style={styles.stateCard}>
-            <View style={styles.stateIconWrapDanger}>
-              <Ionicons
-                name="warning-outline"
-                size={24}
-                color={COLORS.danger}
-              />
-            </View>
-            <Text style={styles.stateTitle}>Could not load requests</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable
-              style={styles.retryButton}
-              onPress={() => fetchPendingRequests()}
-            >
-              <Text style={styles.retryButtonText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : requests.length === 0 ? (
-          <View style={styles.stateCard}>
-            <View style={styles.stateIconWrap}>
-              <Ionicons
-                name="checkmark-done-outline"
-                size={24}
-                color={COLORS.success}
-              />
-            </View>
-            <Text style={styles.stateTitle}>No pending requests</Text>
-            <Text style={styles.stateText}>
-              New applications will appear here when their status is pending.
-            </Text>
-          </View>
-        ) : (
-          requests.map((request, index) => (
-            <RequestCard
-              key={getRequestId(request) || `${request?.mobileNumber}-${index}`}
-              request={request}
-              index={index}
-              processingId={processingId}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onOpenPhoto={(photoUrl) => setPreviewPhotoUrl(photoUrl || "")}
-              onOpenVisits={(visits) => {
-                setVisitModalVisits(Array.isArray(visits) ? visits : []);
-                setIsVisitModalVisible(true);
-              }}
-            />
-          ))
-        )}
+        {currentView === "categories" && renderCategoriesView()}
+        {currentView === "list" && renderListView()}
+        {currentView === "detail" && renderDetailView()}
       </ScrollView>
 
       <Modal
@@ -929,7 +1239,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   heroIconWrap: {
@@ -944,16 +1254,16 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "900",
     marginTop: 20,
     maxWidth: "94%",
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.78)",
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "600",
     marginTop: 8,
     maxWidth: "96%",
@@ -973,12 +1283,12 @@ const styles = StyleSheet.create({
   },
   heroStatValue: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
   },
   heroStatLabel: {
     color: "rgba(255,255,255,0.72)",
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -991,7 +1301,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: COLORS.brand,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -999,8 +1309,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
   },
   refreshButton: {
@@ -1047,14 +1357,14 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
     marginTop: 10,
   },
   stateText: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     textAlign: "center",
     fontWeight: "600",
     marginTop: 5,
@@ -1068,7 +1378,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   requestCard: {
@@ -1151,13 +1461,13 @@ const styles = StyleSheet.create({
   },
   customerName: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
   },
   customerMeta: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9.5,
+    lineHeight: 14,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1178,7 +1488,7 @@ const styles = StyleSheet.create({
   },
   pendingBadgeText: {
     color: COLORS.amber,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -1209,13 +1519,13 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
   },
   serviceSubText: {
     color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 9.5,
+    lineHeight: 14,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1229,14 +1539,14 @@ const styles = StyleSheet.create({
   },
   amountLabel: {
     color: COLORS.muted,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   amountValue: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "900",
     marginTop: 3,
   },
@@ -1260,13 +1570,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoChipValue: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
     textTransform: "capitalize",
   },
   infoChipLabel: {
     color: COLORS.muted,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "800",
     marginTop: 1,
   },
@@ -1295,7 +1605,7 @@ const styles = StyleSheet.create({
   },
   photoPlaceholderText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
     marginTop: 5,
   },
@@ -1314,7 +1624,7 @@ const styles = StyleSheet.create({
   },
   photoOverlayText: {
     color: "#FFFFFF",
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "900",
   },
   detailsMiniList: {
@@ -1344,15 +1654,15 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     color: COLORS.muted,
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   detailValue: {
     color: COLORS.text,
-    fontSize: 10.5,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1371,12 +1681,12 @@ const styles = StyleSheet.create({
   },
   visitTitle: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   visitSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
     marginTop: 2,
   },
@@ -1388,7 +1698,7 @@ const styles = StyleSheet.create({
   },
   visitCountText: {
     color: COLORS.blue,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   visitDatesRow: {
@@ -1408,12 +1718,12 @@ const styles = StyleSheet.create({
   },
   visitDateText: {
     color: COLORS.brand,
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "800",
   },
   noVisitText: {
     color: COLORS.muted,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
   },
   metaFooter: {
@@ -1429,12 +1739,12 @@ const styles = StyleSheet.create({
   },
   createdText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   indexText: {
     color: COLORS.faint,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   actionRow: {
@@ -1456,7 +1766,7 @@ const styles = StyleSheet.create({
   },
   rejectButtonText: {
     color: COLORS.danger,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   approveButton: {
@@ -1476,7 +1786,7 @@ const styles = StyleSheet.create({
   },
   approveButtonText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   disabledButton: {
@@ -1505,7 +1815,7 @@ const styles = StyleSheet.create({
   },
   photoModalTitle: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
   },
   modalCloseButton: {
@@ -1529,8 +1839,8 @@ const styles = StyleSheet.create({
   },
   rejectHelpText: {
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 15,
     fontWeight: "700",
     paddingHorizontal: 14,
     paddingTop: 12,
@@ -1544,8 +1854,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     color: COLORS.text,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: "700",
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1567,7 +1877,7 @@ const styles = StyleSheet.create({
   },
   rejectCancelText: {
     color: COLORS.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   rejectConfirmButton: {
@@ -1580,7 +1890,7 @@ const styles = StyleSheet.create({
   },
   rejectConfirmText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   viewAllVisitsButton: {
@@ -1593,7 +1903,7 @@ const styles = StyleSheet.create({
   },
   viewAllVisitsText: {
     color: COLORS.brand,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   visitListScroll: {
@@ -1610,7 +1920,195 @@ const styles = StyleSheet.create({
   },
   visitListText: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "800",
+  },
+  backHeader: {
+    marginBottom: 12,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignSelf: "flex-start",
+  },
+  backButtonText: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "800",
+    paddingVertical: 0,
+  },
+  categoryCard: {
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  categoryContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  categoryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  categoryTextWrap: {
+    flex: 1,
+  },
+  categoryName: {
+    color: COLORS.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+  categoryCount: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  categoryArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryAccent: {
+    position: "absolute",
+    left: 0,
+    top: 16,
+    bottom: 16,
+    width: 4,
+    borderTopRightRadius: 999,
+    borderBottomRightRadius: 999,
+  },
+  listItemCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  listItemLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  listItemAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.blueSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  listItemTextWrap: {
+    flex: 1,
+  },
+  listItemName: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  listItemMeta: {
+    color: COLORS.muted,
+    fontSize: 9.5,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  listItemAmount: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+  listItemRight: {
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  listItemBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: COLORS.amberSoft,
+  },
+  listItemDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.amber,
+  },
+  listItemBadgeText: {
+    color: COLORS.amber,
+    fontSize: 8.5,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  listItemViewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: COLORS.blueSoft,
+  },
+  listItemViewText: {
+    color: COLORS.brand,
+    fontSize: 10,
+    fontWeight: "900",
   },
 });

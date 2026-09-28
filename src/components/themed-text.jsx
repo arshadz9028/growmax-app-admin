@@ -27,42 +27,42 @@ export function ThemedText({ style, type = "default", themeColor, ...rest }) {
 
 const styles = StyleSheet.create({
   small: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 18,
     fontWeight: "500",
   },
   smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 18,
     fontWeight: "700",
   },
   default: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 21,
     fontWeight: "500",
   },
   title: {
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: "600",
-    lineHeight: 52,
+    lineHeight: 44,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
+    fontSize: 26,
+    lineHeight: 36,
     fontWeight: "600",
   },
   link: {
-    lineHeight: 30,
-    fontSize: 14,
+    lineHeight: 26,
+    fontSize: 12,
   },
   linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
+    lineHeight: 26,
+    fontSize: 12,
     color: "#3c87f7",
   },
   code: {
     fontFamily: Fonts.mono,
     fontWeight: Platform.select({ android: "700" }) ?? "500",
-    fontSize: 12,
+    fontSize: 11,
   },
 });
