@@ -5,14 +5,14 @@ import { useFocusEffect, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-    Animated,
-    Easing,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
@@ -89,11 +89,14 @@ function formatTaskDeadline(value) {
 }
 
 function toQueueTask(task) {
-  const priority = TASK_PRIORITY_STYLES[task?.priority] || TASK_PRIORITY_STYLES.medium;
+  const priority =
+    TASK_PRIORITY_STYLES[task?.priority] || TASK_PRIORITY_STYLES.medium;
 
   return {
     title: task?.title || "Untitled task",
-    subtitle: task?.completed ? `${priority.label} priority - Completed` : `${priority.label} priority`,
+    subtitle: task?.completed
+      ? `${priority.label} priority - Completed`
+      : `${priority.label} priority`,
     time: task?.completed ? "Done" : formatTaskDeadline(task?.deadline),
     icon: priority.icon,
     accent: priority.accent,
@@ -510,10 +513,7 @@ function AdminHomeUI() {
                 <View style={styles.notificationDot} />
               </Pressable>
 
-              <Pressable
-                style={styles.logoutButton}
-                onPress={logout}
-              >
+              <Pressable style={styles.logoutButton} onPress={logout}>
                 <Ionicons
                   name="log-out-outline"
                   size={18}
@@ -639,8 +639,14 @@ function AdminHomeUI() {
             </View>
           ) : hasTaskLoadError ? (
             <View style={styles.queueState}>
-              <Ionicons name="warning-outline" size={17} color={COLORS.danger} />
-              <Text style={styles.queueStateText}>Tasks could not be loaded</Text>
+              <Ionicons
+                name="warning-outline"
+                size={17}
+                color={COLORS.danger}
+              />
+              <Text style={styles.queueStateText}>
+                Tasks could not be loaded
+              </Text>
             </View>
           ) : tasks.length === 0 ? (
             <View style={styles.queueState}>
@@ -656,7 +662,9 @@ function AdminHomeUI() {
 
                 if (priorityDifference !== 0) return priorityDifference;
 
-                return new Date(first.deadline || 0) - new Date(second.deadline || 0);
+                return (
+                  new Date(first.deadline || 0) - new Date(second.deadline || 0)
+                );
               })
               .map((task, index) => (
                 <QueueItem
