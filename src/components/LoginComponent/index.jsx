@@ -1,439 +1,444 @@
-// import { GoogleSignin } from "@react-native-google-signin/google-signin";
-// import { useRouter } from "expo-router";
-// import { useState } from "react";
-// import {
-//   ActivityIndicator,
-//   Alert,
-//   Dimensions,
-//   Image,
-//   SafeAreaView,
-//   StatusBar,
-//   StyleSheet,
-//   Text,
-//   TouchableOpacity,
-//   View,
-// } from "react-native";
-// import Svg, { Path } from "react-native-svg";
-// import growNew from "../../../assets/images/grow_new.jpeg";
-// import { getApiUrl, safeFetch } from "../../constants/api";
-// import { useAuth } from "../../contexts/auth-context";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAdminAuth } from "../../contexts/AdminAuthContext";
 
-// const { width } = Dimensions.get("window");
+const COLORS = {
+  ink: "#102A43",
+  green: "#1E6C5C",
+  lime: "#D9FF76",
+  muted: "#789092",
+  field: "#F4F8F7",
+  border: "#D8E8E3",
+  error: "#C24141",
+  white: "#FFFFFF",
+};
 
-// GoogleSignin.configure({
-//   webClientId:
-//     "720097041089-ha8b1krhcmsl20bk9u9a34abcgikhqg4.apps.googleusercontent.com",
-// });
-// const colors = {
-//   brand: "#657EEA",
-//   brandDark: "#4A63D6",
-//   brandDeep: "#3451C7",
-//   brandLight: "#EEF1FD",
-//   brandMid: "#8FA3F0",
-//   amber: "#F59E0B",
-//   green: "#10B981",
-//   red: "#EF4444",
-//   purple: "#8B5CF6",
-//   textDark: "#111827",
-//   textLight: "#6B7280",
-//   border: "#E5E7EB",
-//   white: "#FFFFFF",
-// };
+export default function AdminLoginScreen() {
+  const { login } = useAdminAuth();
 
-// export default function LoginScreen() {
-//   const router = useRouter();
-//   const { saveSession } = useAuth();
-//   const [loading, setLoading] = useState(false);
-//   const [userData, setUserData] = useState(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-//   const handleGoogleSignIn = async () => {
-//     try {
-//       setLoading(true);
+  const submit = async () => {
+    if (!username.trim() || !password) {
+      setError("Enter your username and password.");
+      return;
+    }
 
-//       console.log("Starting Google sign-in...");
-//       await GoogleSignin.hasPlayServices();
-//       const result = await GoogleSignin.signIn();
-//       console.log("User Info:", result);
-//       const idToken =
-//         result.authentication?.idToken ??
-//         result.authentication?.id_token ??
-//         result.params?.id_token;
-//       console.log("ID Token:", idToken);
-//       const accessToken =
-//         result.authentication?.accessToken ??
-//         result.authentication?.access_token ??
-//         result.params?.access_token;
-//       console.log("Access Token:", accessToken);
+    setSubmitting(true);
+    setError("");
 
-//       const response = await safeFetch(getApiUrl("/api/auth/google"), {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//         body: JSON.stringify({
-//           googleUid: result?.data?.idToken,
-//           email: result?.data?.user?.email,
-//           username: result?.data?.user?.name,
-//           photoURL: result?.data?.user?.photo,
-//         }),
-//       });
+    try {
+      await login({
+        username: username.trim(),
+        password,
+      });
+    } catch (loginError) {
+      setError(
+        loginError?.message || "Unable to sign in. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-//       const backendData = await response.json();
-//       console.log("Backend Response:", backendData);
-//       if (!response.ok || !backendData.success) {
-//         throw new Error(backendData.message || "Authentication failed.");
-//       }
+  return (
+    <SafeAreaView style={styles.safe}>
+      <LinearGradient
+        colors={["#083A32", "#146D59", "#2E8B67"]}
+        style={styles.background}
+      >
+        {/* Decorative background circles */}
+        <View pointerEvents="none" style={styles.orbOne} />
+        <View pointerEvents="none" style={styles.orbTwo} />
 
-//       await saveSession({
-//         username: backendData.data.username || result?.data?.user?.name || "",
-//         userToken: backendData.data.userToken || "",
-//         secureToken: backendData.data.secureToken || "",
-//         refreshToken: backendData.data.refreshToken || "",
-//         email: result?.data?.user?.email || "",
-//         userId:
-//           backendData.data.userId ||
-//           backendData.data.id ||
-//           backendData.data._id ||
-//           result?.data?.user?.userId ||
-//           result?.data?.user?.id ||
-//           result?.data?.user?._id ||
-//           "",
-//         photoURL:
-//           backendData.data.photoURL ||
-//           backendData.data.photoUrl ||
-//           result?.data?.user?.photo ||
-//           result?.data?.user?.photoUrl ||
-//           "",
-//       });
+        <KeyboardAvoidingView
+          style={styles.keyboard}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+            showsVerticalScrollIndicator={false}
+            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          >
+            {/* Header */}
+            <View style={styles.top}>
+              <View style={styles.mark}>
+                <Ionicons
+                  name="shield-checkmark"
+                  size={27}
+                  color={COLORS.lime}
+                />
+              </View>
 
-//       router.replace("/explore");
-//     } catch (error) {
-//       console.error("Google Sign-In Error:", error);
+              <Text style={styles.brand}>GROWMAX</Text>
 
-//       Alert.alert(
-//         "Sign In Failed",
-//         error?.message || "An unexpected error occurred.",
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
+              <Text style={styles.portal}>
+                ADMIN PORTAL
+              </Text>
+            </View>
 
-//   return (
-//     <SafeAreaView style={styles.container}>
-//       <StatusBar barStyle="light-content" backgroundColor={colors.brand} />
+            {/* Login Card */}
+            <View style={styles.card}>
+              <Text style={styles.title}>Admin Access</Text>
 
-//       {/* Top Header Card */}
-//       <View style={styles.headerContainer}>
-//         {/* Background Decorative Circles */}
-//         <View style={[styles.circleShape, styles.circleOne]} />
-//         <View style={[styles.circleShape, styles.circleTwo]} />
-//         <View style={[styles.circleShape, styles.circleThree]} />
+              <Text style={styles.subtitle}>
+                Sign in to access the admin console and manage operations.
+              </Text>
 
-//         <View style={styles.headerContent}>
-//           {/* Logo with Badge */}
-//           <View style={styles.logoContainer}>
-//             <View style={styles.logoBox}>
-//               <Image source={growNew} style={styles.logoIcon} />
-//             </View>
-//             <View style={styles.badge}>
-//               <Text style={styles.badgeText}>✨</Text>
-//             </View>
-//           </View>
+              {/* Username */}
+              <Text style={styles.label}>Username</Text>
 
-//           {/* Titles */}
-//           <Text style={styles.title}>Growmax Engineers</Text>
-//           <Text style={styles.subtitle}>Solar & Electrical Services</Text>
+              <View style={styles.inputWrap}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={COLORS.muted}
+                />
 
-//           {/* Key Metrics Row */}
-//           <View style={styles.statsContainer}>
-//             <View style={styles.statBox}>
-//               <Text style={styles.statNumber}>500+</Text>
-//               <Text style={styles.statLabel}>Clients</Text>
-//             </View>
-//             <View style={styles.statBox}>
-//               <Text style={styles.statNumber}>5.0★</Text>
-//               <Text style={styles.statLabel}>Rating</Text>
-//             </View>
-//             <View style={styles.statBox}>
-//               <Text style={styles.statNumber}>8 Yrs</Text>
-//               <Text style={styles.statLabel}>Experience</Text>
-//             </View>
-//           </View>
-//         </View>
+                <TextInput
+                  value={username}
+                  onChangeText={(text) => {
+                    setUsername(text);
+                    if (error) {
+                      setError("");
+                    }
+                  }}
+                  placeholder="Admin username"
+                  placeholderTextColor="#9DAFAD"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="username"
+                  textContentType="username"
+                  editable={!submitting}
+                  returnKeyType="next"
+                  style={styles.input}
+                />
+              </View>
 
-//         {/* Bottom Curved Wave */}
-//         <View style={styles.waveContainer}>
-//           <Svg
-//             height="60"
-//             width={width}
-//             viewBox="0 0 1440 320"
-//             preserveAspectRatio="none"
-//           >
-//             <Path
-//               fill={colors.white}
-//               d="M0,96L48,112C96,128,192,160,288,165.3C384,171,480,149,576,149.3C672,149,768,171,864,181.3C960,192,1056,192,1152,176C1248,160,1344,128,1392,112L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-//             />
-//           </Svg>
-//         </View>
-//       </View>
+              {/* Password */}
+              <Text style={styles.label}>Password</Text>
 
-//       {/* Bottom Authentication Form */}
-//       <View style={styles.bottomContainer}>
-//         <View style={styles.greetingContainer}>
-//           <Text style={styles.greetingTitle}>Welcome back 👋</Text>
-//           <Text style={styles.greetingSubtitle}>
-//             Sign in to manage your solar services
-//           </Text>
-//         </View>
+              <View style={styles.inputWrap}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color={COLORS.muted}
+                />
 
-//         {/* Google Sign In Button */}
-//         <TouchableOpacity
-//           style={styles.googleButton}
-//           activeOpacity={0.8}
-//           onPress={handleGoogleSignIn}
-//           // disabled={loading || !request}
-//         >
-//           {loading ? (
-//             <ActivityIndicator color={colors.textDark} />
-//           ) : (
-//             <>
-//               <Text style={styles.googleIconPlaceholder}>G</Text>
-//               <Text style={styles.googleButtonText}>Continue with Google</Text>
-//             </>
-//           )}
-//         </TouchableOpacity>
+                <TextInput
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (error) {
+                      setError("");
+                    }
+                  }}
+                  placeholder="Your password"
+                  placeholderTextColor="#9DAFAD"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="password"
+                  textContentType="password"
+                  editable={!submitting}
+                  returnKeyType="done"
+                  onSubmitEditing={submit}
+                  style={styles.input}
+                />
 
-//         {/* Divider 
-//         <View style={styles.dividerContainer}>
-//           <View style={styles.dividerLine} />
-//           <Text style={styles.dividerText}>or</Text>
-//           <View style={styles.dividerLine} />
-//         </View>
-// */}
-//         {/* Phone Sign In Button 
-//         <TouchableOpacity style={styles.phoneButton} activeOpacity={0.8}>
-//           <Text style={styles.phoneButtonText}>Sign In with Phone Number</Text>
-//         </TouchableOpacity>
-// */}
-//         {/* Terms and Privacy Footer */}
-//         <Text style={styles.footerText}>
-//           By continuing, you agree to our{" "}
-//           <Text style={styles.linkText}>Terms of Service</Text> and{" "}
-//           <Text style={styles.linkText}>Privacy Policy</Text>
-//         </Text>
-//       </View>
-//     </SafeAreaView>
-//   );
-// }
+                <Pressable
+                  onPress={() =>
+                    setShowPassword((current) => !current)
+                  }
+                  hitSlop={8}
+                  disabled={submitting}
+                >
+                  <Ionicons
+                    name={
+                      showPassword
+                        ? "eye-off-outline"
+                        : "eye-outline"
+                    }
+                    size={19}
+                    color={COLORS.muted}
+                  />
+                </Pressable>
+              </View>
 
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: colors.white,
-//   },
-//   headerContainer: {
-//     backgroundColor: colors.brand,
-//     height: "55%",
-//     position: "relative",
-//     overflow: "hidden",
-//   },
-//   circleShape: {
-//     position: "absolute",
-//     backgroundColor: "rgba(255, 255, 255, 0.08)",
-//     borderRadius: 999,
-//   },
-//   circleOne: {
-//     width: 300,
-//     height: 300,
-//     top: -100,
-//     left: -100,
-//   },
-//   circleTwo: {
-//     width: 250,
-//     height: 250,
-//     top: 50,
-//     right: -100,
-//   },
-//   circleThree: {
-//     width: 150,
-//     height: 150,
-//     bottom: 50,
-//     left: 50,
-//   },
-//   headerContent: {
-//     flex: 1,
-//     alignItems: "center",
-//     paddingTop: 50,
-//     paddingHorizontal: 20,
-//     zIndex: 1,
-//   },
-//   logoContainer: {
-//     position: "relative",
-//     marginBottom: 16,
-//   },
-//   logoBox: {
-//     width: 80,
-//     height: 80,
-//     backgroundColor: colors.white,
-//     borderRadius: 24,
-//     justifyContent: "center",
-//     alignItems: "center",
-//     shadowColor: "#000",
-//     shadowOffset: { width: 0, height: 4 },
-//     shadowOpacity: 0.1,
-//     shadowRadius: 10,
-//     elevation: 5,
-//   },
-//   logoIcon: {
-//     width: 60,
-//     height: 60,
-//     borderRadius: 12,
-//     resizeMode: "contain",
-//   },
-//   badge: {
-//     position: "absolute",
-//     bottom: -4,
-//     right: -4,
-//     backgroundColor: colors.amber,
-//     width: 24,
-//     height: 24,
-//     borderRadius: 12,
-//     justifyContent: "center",
-//     alignItems: "center",
-//     borderWidth: 2,
-//     borderColor: colors.white,
-//   },
-//   badgeText: {
-//     fontSize: 10,
-//   },
-//   title: {
-//     fontSize: 26,
-//     fontWeight: "bold",
-//     color: colors.white,
-//     marginBottom: 4,
-//   },
-//   subtitle: {
-//     fontSize: 14,
-//     color: colors.brandLight,
-//     marginBottom: 28,
-//     fontWeight: "500",
-//   },
-//   statsContainer: {
-//     flexDirection: "row",
-//     justifyContent: "space-between",
-//     width: "100%",
-//     paddingHorizontal: 10,
-//   },
-//   statBox: {
-//     backgroundColor: "rgba(255, 255, 255, 0.15)",
-//     borderWidth: 1,
-//     borderColor: "rgba(255, 255, 255, 0.3)",
-//     borderRadius: 16,
-//     paddingVertical: 14,
-//     paddingHorizontal: 8,
-//     alignItems: "center",
-//     flex: 1,
-//     marginHorizontal: 6,
-//   },
-//   statNumber: {
-//     fontSize: 18,
-//     fontWeight: "bold",
-//     color: colors.white,
-//     marginBottom: 2,
-//   },
-//   statLabel: {
-//     fontSize: 11,
-//     color: colors.brandLight,
-//     fontWeight: "500",
-//   },
-//   waveContainer: {
-//     position: "absolute",
-//     bottom: 0,
-//     width: "100%",
-//   },
-//   bottomContainer: {
-//     flex: 1,
-//     backgroundColor: colors.white,
-//     paddingHorizontal: 24,
-//     paddingTop: 10,
-//   },
-//   greetingContainer: {
-//     marginBottom: 28,
-//   },
-//   greetingTitle: {
-//     fontSize: 24,
-//     fontWeight: "bold",
-//     color: colors.textDark,
-//     marginBottom: 6,
-//   },
-//   greetingSubtitle: {
-//     fontSize: 15,
-//     color: colors.textLight,
-//   },
-//   googleButton: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "center",
-//     backgroundColor: colors.white,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     borderRadius: 16,
-//     paddingVertical: 16,
-//     marginBottom: 20,
-//   },
-//   googleIconPlaceholder: {
-//     fontSize: 18,
-//     fontWeight: "bold",
-//     color: "#DB4437",
-//     marginRight: 12,
-//   },
-//   googleButtonText: {
-//     fontSize: 16,
-//     fontWeight: "600",
-//     color: colors.textDark,
-//   },
-//   dividerContainer: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     marginBottom: 20,
-//   },
-//   dividerLine: {
-//     flex: 1,
-//     height: 1,
-//     backgroundColor: colors.border,
-//   },
-//   dividerText: {
-//     paddingHorizontal: 16,
-//     color: "#9CA3AF",
-//     fontSize: 14,
-//   },
-//   phoneButton: {
-//     backgroundColor: colors.brand,
-//     borderRadius: 16,
-//     paddingVertical: 16,
-//     alignItems: "center",
-//     marginBottom: 24,
-//     shadowColor: colors.brand,
-//     shadowOffset: { width: 0, height: 4 },
-//     shadowOpacity: 0.3,
-//     shadowRadius: 8,
-//     elevation: 4,
-//   },
-//   phoneButtonText: {
-//     fontSize: 16,
-//     fontWeight: "bold",
-//     color: colors.white,
-//   },
-//   footerText: {
-//     textAlign: "center",
-//     fontSize: 12,
-//     color: colors.textLight,
-//     lineHeight: 18,
-//     paddingHorizontal: 10,
-//   },
-//   linkText: {
-//     color: colors.brand,
-//     fontWeight: "600",
-//   },
-// });
+              {/* Error / Session message */}
+              {error ? (
+                <Text style={styles.error}>{error}</Text>
+              ) : (
+                <Text style={styles.sessionNote}>
+                  Your login remains securely saved on this device.
+                </Text>
+              )}
+
+              {/* Login Button */}
+              <Pressable
+                style={[
+                  styles.button,
+                  submitting && styles.buttonDisabled,
+                ]}
+                onPress={submit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={COLORS.ink} />
+                ) : (
+                  <>
+                    <Text style={styles.buttonText}>
+                      Sign in
+                    </Text>
+
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color={COLORS.ink}
+                    />
+                  </>
+                )}
+              </Pressable>
+            </View>
+
+            {/* Footer */}
+            <Text style={styles.footer}>
+              GROWMAX ENGINEERS · ADMIN CONSOLE
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#083A32",
+  },
+
+  background: {
+    flex: 1,
+    overflow: "hidden",
+  },
+
+  keyboard: {
+    flex: 1,
+  },
+
+  scroll: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 42,
+    paddingBottom: 24,
+
+    // Gives ScrollView enough room to position
+    // the card above the keyboard.
+    justifyContent: "space-between",
+  },
+
+  /* Decorative circles */
+
+  orbOne: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: "rgba(217,255,118,.19)",
+    right: -120,
+    top: -70,
+  },
+
+  orbTwo: {
+    position: "absolute",
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 1,
+    borderColor: "rgba(217,255,118,.25)",
+    left: -95,
+    bottom: 80,
+  },
+
+  /* Header */
+
+  top: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+
+  mark: {
+    width: 62,
+    height: 62,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "rgba(217,255,118,.44)",
+    backgroundColor: "rgba(3,45,37,.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  brand: {
+    color: COLORS.white,
+    fontSize: 29,
+    fontWeight: "900",
+    letterSpacing: 2,
+    marginTop: 16,
+  },
+
+  portal: {
+    color: "rgba(235,255,228,.74)",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 3,
+    marginTop: 4,
+  },
+
+  /* Login card */
+
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 23,
+    padding: 20,
+
+    shadowColor: "#052B25",
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
+
+    elevation: 8,
+  },
+
+  title: {
+    color: COLORS.ink,
+    fontSize: 23,
+    fontWeight: "900",
+  },
+
+  subtitle: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+    marginTop: 5,
+    marginBottom: 22,
+  },
+
+  label: {
+    color: COLORS.ink,
+    fontSize: 11,
+    fontWeight: "900",
+    marginBottom: 7,
+    marginTop: 12,
+  },
+
+  /* Inputs */
+
+  inputWrap: {
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.field,
+
+    flexDirection: "row",
+    alignItems: "center",
+
+    gap: 9,
+    paddingHorizontal: 13,
+  },
+
+  input: {
+    flex: 1,
+    color: COLORS.ink,
+    fontSize: 13,
+    fontWeight: "700",
+    minHeight: 48,
+    paddingVertical: 0,
+  },
+
+  /* Messages */
+
+  sessionNote: {
+    color: COLORS.muted,
+    fontSize: 10.5,
+    lineHeight: 16,
+    fontWeight: "600",
+    marginTop: 13,
+  },
+
+  error: {
+    color: COLORS.error,
+    fontSize: 10.5,
+    lineHeight: 16,
+    fontWeight: "700",
+    marginTop: 13,
+  },
+
+  /* Button */
+
+  button: {
+    height: 51,
+    borderRadius: 14,
+    backgroundColor: COLORS.lime,
+
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+
+    gap: 8,
+    marginTop: 18,
+  },
+
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+
+  buttonText: {
+    color: COLORS.ink,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  /* Footer */
+
+  footer: {
+    color: "rgba(235,255,228,.65)",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.3,
+    textAlign: "center",
+    marginTop: 24,
+  },
+});

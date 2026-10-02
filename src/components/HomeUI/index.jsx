@@ -1,9 +1,10 @@
 /* eslint-disable react-hooks/refs */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
     Animated,
     Easing,
     Pressable,
@@ -14,6 +15,8 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getApiUrl, safeFetch } from "../../constants/api";
+import { useAdminAuth } from "../../contexts/AdminAuthContext";
 import { useAuth } from "../../contexts/auth-context";
 
 const COLORS = {
@@ -38,6 +41,65 @@ const COLORS = {
   dangerSoft: "#FEF2F2",
   shadow: "#94A3B8",
 };
+
+const TASKS_API_PATH = "/api/tasks";
+
+const TASK_PRIORITY_STYLES = {
+  high: {
+    label: "High",
+    icon: "alert-circle-outline",
+    accent: COLORS.danger,
+    soft: COLORS.dangerSoft,
+  },
+  medium: {
+    label: "Medium",
+    icon: "time-outline",
+    accent: COLORS.amber,
+    soft: COLORS.amberSoft,
+  },
+  low: {
+    label: "Low",
+    icon: "checkmark-done-circle-outline",
+    accent: COLORS.cyan,
+    soft: COLORS.cyanSoft,
+  },
+};
+
+function formatTaskDeadline(value) {
+  if (!value) return "No date";
+
+  const deadline = new Date(value);
+  if (Number.isNaN(deadline.getTime())) return "No date";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  deadline.setHours(0, 0, 0, 0);
+  const daysUntilDeadline = Math.round(
+    (deadline.getTime() - today.getTime()) / 86400000,
+  );
+
+  if (daysUntilDeadline < 0) return "Overdue";
+  if (daysUntilDeadline === 0) return "Today";
+  if (daysUntilDeadline === 1) return "Tomorrow";
+
+  return deadline.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function toQueueTask(task) {
+  const priority = TASK_PRIORITY_STYLES[task?.priority] || TASK_PRIORITY_STYLES.medium;
+
+  return {
+    title: task?.title || "Untitled task",
+    subtitle: task?.completed ? `${priority.label} priority - Completed` : `${priority.label} priority`,
+    time: task?.completed ? "Done" : formatTaskDeadline(task?.deadline),
+    icon: priority.icon,
+    accent: priority.accent,
+    soft: priority.soft,
+  };
+}
 
 const adminMetrics = [
   {
@@ -65,16 +127,16 @@ const adminMetrics = [
     icon: "checkmark-circle-outline",
     accent: COLORS.success,
     soft: COLORS.successSoft,
-    route: "/admin/approved-requests",
+    route: "/approved-services",
   },
   {
-    label: "Reject Requests",
+    label: "Rejected Requests",
     value: "12",
     trend: "Needs review",
     icon: "close-circle-outline",
     accent: COLORS.danger,
     soft: COLORS.dangerSoft,
-    route: "/admin/reject-requests",
+    route: "/rejected-services",
   },
 ];
 
@@ -159,36 +221,6 @@ const servicePipelines = [
     accent: COLORS.amber,
     soft: COLORS.amberSoft,
     route: "/admin/electrical-amc",
-  },
-];
-
-const priorityQueue = [
-  {
-    title: "Payment confirmation required",
-    subtitle: "7 invoices are waiting for admin verification",
-    time: "Today",
-    icon: "card-outline",
-    accent: COLORS.amber,
-    soft: COLORS.amberSoft,
-    route: "/admin/payments",
-  },
-  {
-    title: "High complaint escalation",
-    subtitle: "4 customer complaints need same-day action",
-    time: "Urgent",
-    icon: "warning-outline",
-    accent: COLORS.danger,
-    soft: COLORS.dangerSoft,
-    route: "/admin/complaints",
-  },
-  {
-    title: "Technician schedule review",
-    subtitle: "12 field visits are queued for assignment",
-    time: "Next",
-    icon: "calendar-outline",
-    accent: COLORS.blue,
-    soft: COLORS.blueSoft,
-    route: "/admin/schedule",
   },
 ];
 
@@ -378,7 +410,52 @@ function ActivityItem({ item, isLast }) {
 function AdminHomeUI() {
   const router = useRouter();
   const { session } = useAuth();
+  const { logout } = useAdminAuth();
   const revealAnim = React.useRef(new Animated.Value(0)).current;
+  const [tasks, setTasks] = React.useState([]);
+  const [isLoadingTasks, setIsLoadingTasks] = React.useState(true);
+  const [hasTaskLoadError, setHasTaskLoadError] = React.useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let isActive = true;
+
+      const loadTasks = async () => {
+        setIsLoadingTasks(true);
+        setHasTaskLoadError(false);
+
+        try {
+          const response = await safeFetch(getApiUrl(TASKS_API_PATH), {
+            method: "GET",
+          });
+          const payload = await response.json().catch(() => null);
+
+          if (!response.ok) {
+            throw new Error(payload?.message || "Unable to load tasks.");
+          }
+
+          if (isActive) {
+            setTasks(Array.isArray(payload?.data) ? payload.data : []);
+          }
+        } catch {
+          if (isActive) {
+            setTasks([]);
+            setHasTaskLoadError(true);
+          }
+        } finally {
+          if (isActive) {
+            setIsLoadingTasks(false);
+          }
+        }
+      };
+
+      loadTasks();
+
+      return () => {
+        isActive = false;
+      };
+    }, []),
+  );
 
   React.useEffect(() => {
     Animated.timing(revealAnim, {
@@ -420,17 +497,30 @@ function AdminHomeUI() {
               <Text style={styles.headerTitle}>Hello, {adminName}</Text>
             </View>
 
-            <Pressable
-              style={styles.headerIconButton}
-              onPress={() => router.push("/notifications")}
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={20}
-                color={COLORS.text}
-              />
-              <View style={styles.notificationDot} />
-            </Pressable>
+            <View style={styles.headerButtons}>
+              <Pressable
+                style={styles.headerIconButton}
+                onPress={() => router.push("/notifications")}
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={20}
+                  color={COLORS.text}
+                />
+                <View style={styles.notificationDot} />
+              </Pressable>
+
+              <Pressable
+                style={styles.logoutButton}
+                onPress={logout}
+              >
+                <Ionicons
+                  name="log-out-outline"
+                  size={18}
+                  color={COLORS.danger}
+                />
+              </Pressable>
+            </View>
           </View>
 
           <LinearGradient
@@ -482,8 +572,8 @@ function AdminHomeUI() {
         <SectionHeader
           eyebrow="Overview"
           title="Today at a glance"
-          actionLabel="Reports"
-          onActionPress={() => router.push("/admin/reports")}
+          // actionLabel="Reports"
+          // onActionPress={() => router.push("/admin/reports")}
         />
 
         <View style={styles.metricsGrid}>
@@ -513,7 +603,7 @@ function AdminHomeUI() {
           ))}
         </View> */}
 
-        <SectionHeader
+        {/* <SectionHeader
           eyebrow="Service pipelines"
           title="Monitor active work"
           actionLabel="View"
@@ -532,26 +622,53 @@ function AdminHomeUI() {
               onPress={() => router.push(item.route)}
             />
           ))}
-        </ScrollView>
+        </ScrollView> */}
 
         <SectionHeader
-          eyebrow="Priority queue"
-          title="Needs admin attention"
-          actionLabel="Open"
-          onActionPress={() => router.push("/admin/queue")}
+          eyebrow="Task board"
+          title="Created tasks"
+          actionLabel="View all"
+          onActionPress={() => router.push("/admin")}
         />
 
         <View style={styles.queueList}>
-          {priorityQueue.map((item) => (
-            <QueueItem
-              key={item.title}
-              item={item}
-              onPress={() => router.push(item.route)}
-            />
-          ))}
+          {isLoadingTasks ? (
+            <View style={styles.queueState}>
+              <ActivityIndicator color={COLORS.brand} size="small" />
+              <Text style={styles.queueStateText}>Loading tasks</Text>
+            </View>
+          ) : hasTaskLoadError ? (
+            <View style={styles.queueState}>
+              <Ionicons name="warning-outline" size={17} color={COLORS.danger} />
+              <Text style={styles.queueStateText}>Tasks could not be loaded</Text>
+            </View>
+          ) : tasks.length === 0 ? (
+            <View style={styles.queueState}>
+              <Text style={styles.queueStateText}>No tasks created yet</Text>
+            </View>
+          ) : (
+            [...tasks]
+              .sort((first, second) => {
+                const priorityOrder = { high: 0, medium: 1, low: 2 };
+                const priorityDifference =
+                  (priorityOrder[first.priority] ?? 1) -
+                  (priorityOrder[second.priority] ?? 1);
+
+                if (priorityDifference !== 0) return priorityDifference;
+
+                return new Date(first.deadline || 0) - new Date(second.deadline || 0);
+              })
+              .map((task, index) => (
+                <QueueItem
+                  key={task._id || task.id || `${task.title}-${index}`}
+                  item={toQueueTask(task)}
+                  onPress={() => router.push("/admin")}
+                />
+              ))
+          )}
         </View>
 
-        <SectionHeader
+        {/* <SectionHeader
           eyebrow="Activity"
           title="Recent admin updates"
           actionLabel="Log"
@@ -566,7 +683,7 @@ function AdminHomeUI() {
               isLast={index === recentActivity.length - 1}
             />
           ))}
-        </View>
+        </View> */}
       </ScrollView>
     </SafeAreaView>
   );
@@ -589,13 +706,18 @@ const styles = StyleSheet.create({
   },
   headerWrap: {
     marginTop: 10,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 14,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   headerEyebrow: {
     color: COLORS.brand,
@@ -619,6 +741,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
+  },
+  logoutButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.dangerSoft,
     shadowColor: COLORS.shadow,
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -978,6 +1115,23 @@ const styles = StyleSheet.create({
   queueList: {
     gap: 10,
     marginBottom: 18,
+  },
+  queueState: {
+    minHeight: 56,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  queueStateText: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "700",
   },
   queueItem: {
     backgroundColor: COLORS.surface,

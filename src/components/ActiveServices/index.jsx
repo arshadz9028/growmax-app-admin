@@ -126,6 +126,22 @@ function isServiceBlocked(service) {
   );
 }
 
+function isPaymentCompleted(service) {
+  const paymentMethod = String(service?.paymentMethod || "").toLowerCase();
+  const paymentStatus = String(service?.paymentStatus || "").toLowerCase();
+  
+  // Payment is NOT completed if:
+  // - paymentMethod is "pending"
+  // - paymentStatus is "pending"
+  // - paymentMethod is empty (no payment made)
+  const isPending = 
+    paymentMethod === "pending" || 
+    paymentStatus === "pending" ||
+    paymentMethod === "";
+  
+  return !isPending;
+}
+
 function isServiceActive(service) {
   return isServiceActivated(service) && !isServiceBlocked(service);
 }
@@ -519,10 +535,7 @@ function ServiceCard({
     [service, user],
   );
   const [calendarEditor, setCalendarEditor] = React.useState(null);
-  console.log(
-    "ServiceCard render:",
-    visitDates.map((v) => v.date.toISOString()),
-  );
+ 
   const openVisitCalendar = (visitIndex, currentDate) => {
     const allSelectedVisits = visitDates.map((visit) => ({
       date: visit.dateKey || formatDateKey(visit.date),
@@ -605,32 +618,18 @@ function ServiceCard({
 
       <View style={styles.detailGrid}>
         <DetailPill
-          icon="key-outline"
-          label="User ID"
-          value={shortId(userId)}
+          icon="call-outline"
+          label="Mobile no."
+          value={user?.mobileNumber || user?.mobile || "Not available"}
           accent={COLORS.brand}
           soft="#E8F4F7"
         />
         <DetailPill
-          icon="finger-print-outline"
-          label="Service ID"
-          value={shortId(serviceId)}
+          icon="card-outline"
+          label="Consumer no."
+          value={getConsumerNumber(user, service)}
           accent={COLORS.blue}
           soft={COLORS.blueSoft}
-        />
-        <DetailPill
-          icon="log-in-outline"
-          label="Provider"
-          value={user?.provider || "local"}
-          accent={COLORS.cyan}
-          soft={COLORS.cyanSoft}
-        />
-        <DetailPill
-          icon="calendar-outline"
-          label="Joined"
-          value={formatDate(user?.createdAt)}
-          accent={COLORS.amber}
-          soft={COLORS.amberSoft}
         />
       </View>
 
@@ -675,6 +674,19 @@ function ServiceCard({
             color={COLORS.danger}
           />
           <Text style={styles.blockReasonText}>{service.blockReason}</Text>
+        </View>
+      ) : null}
+
+      {!isPaymentCompleted(service) ? (
+        <View style={styles.paymentPendingBox}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={16}
+            color={COLORS.amber}
+          />
+          <Text style={styles.paymentPendingText}>
+            Payment pending - Service will be activated after payment confirmation
+          </Text>
         </View>
       ) : null}
 
@@ -865,7 +877,6 @@ export default function AdminActiveUserServices() {
             const growPayload = await growCleaningResponse
               .json()
               .catch(() => null);
-            console.log("Fetched users payload:", growPayload);
 
             const applications = Array.isArray(growPayload?.data)
               ? growPayload.data
@@ -916,7 +927,16 @@ export default function AdminActiveUserServices() {
     return users
       .flatMap((user) =>
         getServiceList(user)
-          .filter((service) => isServiceActivated(service))
+          .filter((service) => {
+            // Filter at initial stage:
+            // 1. Service must be activated
+            // 2. Payment must be completed (not pending)
+            const isActivated = isServiceActivated(service);
+            const hasCompletedPayment = isPaymentCompleted(service);
+       
+            
+            return isActivated && hasCompletedPayment;
+          })
           .map((service, serviceIndex) => ({
             user,
             service,
@@ -924,8 +944,7 @@ export default function AdminActiveUserServices() {
             active: !isServiceBlocked(service),
             blocked: isServiceBlocked(service),
           })),
-      )
-      .filter((row) => isServiceActivated(row.service));
+      );
   }, [users]);
 
   const counts = React.useMemo(() => {
@@ -2358,6 +2377,22 @@ const styles = StyleSheet.create({
   blockReasonText: {
     flex: 1,
     color: COLORS.danger,
+    fontSize: 9.5,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
+  paymentPendingBox: {
+    marginTop: 11,
+    borderRadius: 13,
+    backgroundColor: COLORS.amberSoft,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+  },
+  paymentPendingText: {
+    flex: 1,
+    color: COLORS.amber,
     fontSize: 9.5,
     lineHeight: 14,
     fontWeight: "700",

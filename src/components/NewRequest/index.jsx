@@ -324,7 +324,19 @@ function RequestCard({
       <View style={styles.servicePanel}>
         <View style={styles.servicePanelTop}>
           <View style={styles.serviceIconWrap}>
-            <Ionicons name="water-outline" size={20} color={COLORS.cyan} />
+            <Ionicons 
+              name={
+                request?.requestType === "solar-amc" 
+                  ? "sunny-outline" 
+                  : "water-outline"
+              } 
+              size={20} 
+              color={
+                request?.requestType === "solar-amc" 
+                  ? COLORS.amber 
+                  : COLORS.cyan
+              } 
+            />
           </View>
           <View style={styles.serviceTextWrap}>
             <Text style={styles.serviceName}>
@@ -334,6 +346,11 @@ function RequestCard({
               Consumer No:{" "}
               {request?.consumerNumber || request?.consumerNo || "Pending"}
             </Text>
+            {request?.requestType === "solar-amc" && request?.solarCapacityKw ? (
+              <Text style={styles.serviceSubText}>
+                Capacity: {request.solarCapacityKw} kW • {request?.connectionType || "N/A"} • {request?.phase || "N/A"} Phase
+              </Text>
+            ) : null}
           </View>
         </View>
 
@@ -346,68 +363,127 @@ function RequestCard({
       </View>
 
       <View style={styles.chipGrid}>
-        <InfoChip
-          icon="card-outline"
-          label="Payment"
-          value={request?.paymentMethod || "pending"}
-          accent={COLORS.amber}
-          soft={COLORS.amberSoft}
-        />
-        <InfoChip
-          icon="grid-outline"
-          label="Panels"
-          value={String(request?.numberOfPanels ?? "--")}
-          accent={COLORS.blue}
-          soft={COLORS.blueSoft}
-        />
-        <InfoChip
-          icon="walk-outline"
-          label="Walkway"
-          value={request?.walkwayAndLadder ? "Yes" : "No"}
-          accent={COLORS.success}
-          soft={COLORS.successSoft}
-        />
-        <InfoChip
-          icon="rainy-outline"
-          label="Sprinkler"
-          value={request?.sprinkler ? "Yes" : "No"}
-          accent={COLORS.cyan}
-          soft={COLORS.cyanSoft}
-        />
+        {request?.requestType === "solar-amc" ? (
+          <>
+            <InfoChip
+              icon="card-outline"
+              label="Payment"
+              value={request?.paymentMethod || "pending"}
+              accent={COLORS.amber}
+              soft={COLORS.amberSoft}
+            />
+            <InfoChip
+              icon="grid-outline"
+              label="Panels"
+              value={String(request?.numberOfPanels ?? "--")}
+              accent={COLORS.blue}
+              soft={COLORS.blueSoft}
+            />
+            <InfoChip
+              icon="flash-outline"
+              label="Connection"
+              value={request?.connectionType || "N/A"}
+              accent={COLORS.success}
+              soft={COLORS.successSoft}
+            />
+            <InfoChip
+              icon="settings-outline"
+              label="Phase"
+              value={request?.phase || "N/A"}
+              accent={COLORS.cyan}
+              soft={COLORS.cyanSoft}
+            />
+          </>
+        ) : (
+          <>
+            <InfoChip
+              icon="card-outline"
+              label="Payment"
+              value={request?.paymentMethod || "pending"}
+              accent={COLORS.amber}
+              soft={COLORS.amberSoft}
+            />
+            <InfoChip
+              icon="grid-outline"
+              label="Panels"
+              value={String(request?.numberOfPanels ?? "--")}
+              accent={COLORS.blue}
+              soft={COLORS.blueSoft}
+            />
+            <InfoChip
+              icon="walk-outline"
+              label="Walkway"
+              value={request?.walkwayAndLadder ? "Yes" : "No"}
+              accent={COLORS.success}
+              soft={COLORS.successSoft}
+            />
+            {/* Sprinkler only for cleaning services */}
+            {(request?.serviceName || "").toLowerCase().includes("cleaning") && (
+              <InfoChip
+                icon="rainy-outline"
+                label="Sprinkler"
+                value={request?.sprinkler ? "Yes" : "No"}
+                accent={COLORS.cyan}
+                soft={COLORS.cyanSoft}
+              />
+            )}
+          </>
+        )}
       </View>
 
       <View style={styles.photoAndDetailsRow}>
-        <Pressable
-          style={styles.photoPreview}
-          onPress={() => onOpenPhoto(request?.sitePhotoUrl)}
-          disabled={!request?.sitePhotoUrl}
-        >
-          {request?.sitePhotoUrl ? (
-            <Image
-              source={{ uri: request.sitePhotoUrl }}
-              style={styles.sitePhoto}
-            />
-          ) : (
-            <View style={styles.photoPlaceholder}>
-              <Ionicons name="image-outline" size={22} color={COLORS.faint} />
-              <Text style={styles.photoPlaceholderText}>No photo</Text>
-            </View>
-          )}
-          {request?.sitePhotoUrl ? (
-            <View style={styles.photoOverlay}>
-              <Ionicons name="expand-outline" size={15} color="#FFFFFF" />
-              <Text style={styles.photoOverlayText}>View site</Text>
-            </View>
-          ) : null}
-        </Pressable>
+        {request?.requestType !== "solar-amc" && (
+          <Pressable
+            style={styles.photoPreview}
+            onPress={() => onOpenPhoto(request?.sitePhotoUrl)}
+            disabled={!request?.sitePhotoUrl}
+          >
+            {request?.sitePhotoUrl ? (
+              <Image
+                source={{ uri: request.sitePhotoUrl }}
+                style={styles.sitePhoto}
+              />
+            ) : (
+              <View style={styles.photoPlaceholder}>
+                <Ionicons name="image-outline" size={22} color={COLORS.faint} />
+                <Text style={styles.photoPlaceholderText}>No photo</Text>
+              </View>
+            )}
+            {request?.sitePhotoUrl ? (
+              <View style={styles.photoOverlay}>
+                <Ionicons name="expand-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.photoOverlayText}>View site</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        )}
 
-        <View style={styles.detailsMiniList}>
+        <View style={[
+          styles.detailsMiniList,
+          request?.requestType === "solar-amc" && styles.detailsMiniListFull
+        ]}>
           <DetailRow
             icon="mail-outline"
             label="Email"
             value={request?.email}
             accent={COLORS.blue}
           />
+          {request?.requestType === "solar-amc" && request?.whatsappNumber ? (
+            <DetailRow
+              icon="logo-whatsapp"
+              label="WhatsApp"
+              value={request.whatsappNumber}
+              accent={COLORS.success}
+            />
+          ) : null}
+          {request?.requestType === "solar-amc" && request?.secondaryPhone ? (
+            <DetailRow
+              icon="call-outline"
+              label="Secondary Phone"
+              value={request.secondaryPhone}
+              accent={COLORS.amber}
+            />
+          ) : null}
           <DetailRow
             icon="location-outline"
             label="Location"
@@ -425,54 +501,56 @@ function RequestCard({
         </View>
       </View>
 
-      <View style={styles.visitPanel}>
-        <View style={styles.visitPanelHeader}>
-          <View>
-            <Text style={styles.visitTitle}>AMC visit plan</Text>
-            <Text style={styles.visitSubtitle}>
-              {visitSummary.totalVisit || 0} total -{" "}
-              {visitSummary.remainingVisit || 0} remaining
-            </Text>
+      {request?.requestType !== "solar-amc" && (
+        <View style={styles.visitPanel}>
+          <View style={styles.visitPanelHeader}>
+            <View>
+              <Text style={styles.visitTitle}>AMC visit plan</Text>
+              <Text style={styles.visitSubtitle}>
+                {visitSummary.totalVisit || 0} total -{" "}
+                {visitSummary.remainingVisit || 0} remaining
+              </Text>
+            </View>
+            <View style={styles.visitCountPill}>
+              <Text style={styles.visitCountText}>
+                {visitSummary.markedVisit || 0}/{visitSummary.totalVisit || 0}
+              </Text>
+            </View>
           </View>
-          <View style={styles.visitCountPill}>
-            <Text style={styles.visitCountText}>
-              {visitSummary.markedVisit || 0}/{visitSummary.totalVisit || 0}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.visitDatesRow}>
-          {selectedVisits.length > 0 ? (
-            selectedVisits.map((visit, visitIndex) => (
-              <View
-                key={`${requestId}-visit-${visitIndex}`}
-                style={styles.visitDateChip}
+          <View style={styles.visitDatesRow}>
+            {selectedVisits.length > 0 ? (
+              selectedVisits.map((visit, visitIndex) => (
+                <View
+                  key={`${requestId}-visit-${visitIndex}`}
+                  style={styles.visitDateChip}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={13}
+                    color={COLORS.brand}
+                  />
+                  <Text style={styles.visitDateText}>
+                    {formatDate(visit?.date)}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noVisitText}>No visits selected yet</Text>
+            )}
+            {visitSummary.selectedVisits.length > 3 ? (
+              <Pressable
+                onPress={() =>
+                  onOpenVisits && onOpenVisits(visitSummary.selectedVisits)
+                }
+                style={styles.viewAllVisitsButton}
               >
-                <Ionicons
-                  name="calendar-outline"
-                  size={13}
-                  color={COLORS.brand}
-                />
-                <Text style={styles.visitDateText}>
-                  {formatDate(visit?.date)}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noVisitText}>No visits selected yet</Text>
-          )}
-          {visitSummary.selectedVisits.length > 3 ? (
-            <Pressable
-              onPress={() =>
-                onOpenVisits && onOpenVisits(visitSummary.selectedVisits)
-              }
-              style={styles.viewAllVisitsButton}
-            >
-              <Text style={styles.viewAllVisitsText}>View all</Text>
-            </Pressable>
-          ) : null}
+                <Text style={styles.viewAllVisitsText}>View all</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.metaFooter}>
         <View style={styles.createdWrap}>
@@ -543,12 +621,29 @@ export default function AdminNewRequests() {
   const [rejectReason, setRejectReason] = React.useState("");
   const [visitModalVisits, setVisitModalVisits] = React.useState([]);
   const [isVisitModalVisible, setIsVisitModalVisible] = React.useState(false);
+  
+  // User behavior tracking
+  const [behaviorModalVisible, setBehaviorModalVisible] = React.useState(false);
+  const [behaviorTarget, setBehaviorTarget] = React.useState(null);
+  const [selectedBehavior, setSelectedBehavior] = React.useState("");
 
   // New navigation states
   const [currentView, setCurrentView] = React.useState("categories"); // categories | list | detail
   const [selectedCategory, setSelectedCategory] = React.useState(null);
   const [selectedRequest, setSelectedRequest] = React.useState(null);
   const [searchTerm, setSearchTerm] = React.useState("");
+
+  // Helper function to extract city from full address
+  const extractCityFromAddress = React.useCallback((address) => {
+    if (!address) return "";
+    // Try to extract city from address format: "..., City, State Pincode, Country"
+    const parts = address.split(",").map(p => p.trim());
+    // Usually city is the second-to-last or third-to-last part
+    if (parts.length >= 3) {
+      return parts[parts.length - 3] || parts[parts.length - 2] || "";
+    }
+    return parts[0] || "";
+  }, []);
 
   const fetchPendingRequests = React.useCallback(
     async ({ refreshing = false } = {}) => {
@@ -576,7 +671,56 @@ export default function AdminNewRequests() {
           );
         }
 
-        setRequests(normalizePendingRequests(payload));
+        // The backend returns combined data from GrowCleaning, SolarAMC, and Complaints
+        // with a requestType field ('grow-cleaning', 'solar-amc', or 'complaint')
+        const combinedData = normalizePendingRequests(payload);
+
+        // Normalize Solar AMC and Complaint data to match Grow Cleaning structure
+        const normalizedRequests = combinedData.map((request) => {
+          if (request.requestType === "solar-amc") {
+            return {
+              ...request,
+              // Map Solar AMC fields to standard field names
+              fullName: request.consumerName || request.fullName || "Unnamed customer",
+              mobileNumber: request.primaryPhone || request.mobileNumber || "No mobile",
+              address: request.consumerAddress || request.address || "",
+              city: extractCityFromAddress(request.consumerAddress || request.address || ""),
+              consumerNumber: request.consumerNo || request.consumerNumber || "",
+              serviceName: "Solar AMC",
+              email: request.email || "",
+              latitude: request.latitude || "",
+              longitude: request.longitude || "",
+              // Solar AMC specific fields
+              solarCapacityKw: request.solarCapacityKw || "",
+              connectionType: request.connectionType || "",
+              phase: request.phase || "",
+              secondaryPhone: request.secondaryPhone || "",
+              whatsappNumber: request.whatsappNumber || "",
+              // Set fields that don't exist in Solar AMC
+              walkwayAndLadder: false,
+              sprinkler: false,
+              sitePhotoUrl: "",
+              landmark: request.landmark || "",
+              consumerManagement: {
+                totalVisit: 0,
+                markedVisit: 0,
+                remainingVisit: 0,
+                selectedVisits: [],
+              },
+            };
+          }
+          
+          // For Grow Cleaning and other types, return as-is but ensure required fields exist
+          return {
+            ...request,
+            fullName: request.fullName || "Unnamed customer",
+            mobileNumber: request.mobileNumber || "No mobile",
+            city: request.city || "",
+            serviceName: request.serviceName || "Service request",
+          };
+        });
+
+        setRequests(normalizedRequests);
       } catch (error) {
         setErrorMessage(error?.message || "Unable to load pending requests.");
         setRequests([]);
@@ -585,7 +729,7 @@ export default function AdminNewRequests() {
         setIsRefreshing(false);
       }
     },
-    [],
+    [extractCityFromAddress],
   );
 
   React.useEffect(() => {
@@ -651,11 +795,9 @@ export default function AdminNewRequests() {
 
     const actionKey = nextStatus === "approved" ? "approve" : "reject";
     setProcessingId(`${actionKey}-${requestId}`);
-    console.log("Updating request status:", {
-      requestId,
-      nextStatus,
-      extraPayload,
-    });
+    
+
+    
     try {
       const response = await safeFetch(
         getApiUrl(`/api/admin/requests/${requestId}`),
@@ -676,6 +818,7 @@ export default function AdminNewRequests() {
 
       const payload = await response.json().catch(() => null);
 
+
       if (!response.ok) {
         throw new Error(payload?.message || `Unable to ${actionKey} request.`);
       }
@@ -691,29 +834,21 @@ export default function AdminNewRequests() {
           : "The request has been rejected and removed from the pending queue.",
       );
     } catch (error) {
+      console.error("Update error:", error);
       Alert.alert("Update failed", error?.message || "Please try again.");
     } finally {
       setProcessingId("");
       setRejectTarget(null);
       setRejectReason("");
+      setBehaviorModalVisible(false);
+      setBehaviorTarget(null);
+      setSelectedBehavior("");
     }
   };
 
   const handleApprove = (request) => {
-    Alert.alert(
-      "Approve request",
-      `Approve ${request?.fullName || "this customer"}'s service request?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Approve",
-          onPress: () => updateRequestStatus(request, "approved"),
-        },
-      ],
-    );
+    setBehaviorTarget(request);
+    setBehaviorModalVisible(true);
   };
 
   const handleReject = (request) => {
@@ -721,13 +856,32 @@ export default function AdminNewRequests() {
     setRejectReason("");
   };
 
+  const submitApprove = () => {
+    if (!behaviorTarget || !selectedBehavior) {
+      Alert.alert("Select Behavior", "Please rate the user's behavior before approving.");
+      return;
+    }
+
+    updateRequestStatus(behaviorTarget, "approved", {
+      userBehavior: selectedBehavior,
+      userId: behaviorTarget.userId,
+    });
+  };
+
   const submitReject = () => {
     if (!rejectTarget) {
+      return;
+    }
+    
+    if (!selectedBehavior) {
+      Alert.alert("Select Behavior", "Please rate the user's behavior before rejecting.");
       return;
     }
 
     updateRequestStatus(rejectTarget, "rejected", {
       rejectionReason: rejectReason.trim(),
+      userBehavior: selectedBehavior,
+      userId: rejectTarget.userId,
     });
   };
 
@@ -1118,7 +1272,10 @@ export default function AdminNewRequests() {
         visible={Boolean(rejectTarget)}
         transparent
         animationType="fade"
-        onRequestClose={() => setRejectTarget(null)}
+        onRequestClose={() => {
+          setRejectTarget(null);
+          setSelectedBehavior("");
+        }}
       >
         <View style={styles.photoModalOverlay}>
           <View style={styles.rejectModalCard}>
@@ -1126,7 +1283,10 @@ export default function AdminNewRequests() {
               <Text style={styles.photoModalTitle}>Reject request</Text>
               <Pressable
                 style={styles.modalCloseButton}
-                onPress={() => setRejectTarget(null)}
+                onPress={() => {
+                  setRejectTarget(null);
+                  setSelectedBehavior("");
+                }}
               >
                 <Ionicons name="close" size={18} color={COLORS.text} />
               </Pressable>
@@ -1146,18 +1306,214 @@ export default function AdminNewRequests() {
               style={styles.rejectInput}
             />
 
+            <Text style={[styles.rejectHelpText, { marginTop: 12 }]}>
+              Rate user behavior (required)
+            </Text>
+
+            <View style={styles.behaviorGrid}>
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Good" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.successSoft, borderColor: COLORS.success },
+                ]}
+                onPress={() => setSelectedBehavior("Good")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Good" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.success}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.success }]}>Good</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Normal" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.blueSoft, borderColor: COLORS.blue },
+                ]}
+                onPress={() => setSelectedBehavior("Normal")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Normal" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.blue}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.blue }]}>Normal</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Severe" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.amberSoft, borderColor: COLORS.amber },
+                ]}
+                onPress={() => setSelectedBehavior("Severe")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Severe" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.amber}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.amber }]}>Severe</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Indisciplined" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger },
+                ]}
+                onPress={() => setSelectedBehavior("Indisciplined")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Indisciplined" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.danger}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.danger }]}>Indisciplined</Text>
+              </Pressable>
+            </View>
+
             <View style={styles.rejectModalActions}>
               <Pressable
                 style={styles.rejectCancelButton}
-                onPress={() => setRejectTarget(null)}
+                onPress={() => {
+                  setRejectTarget(null);
+                  setSelectedBehavior("");
+                }}
               >
                 <Text style={styles.rejectCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={styles.rejectConfirmButton}
+                style={[
+                  styles.rejectConfirmButton,
+                  !selectedBehavior && styles.disabledButton,
+                ]}
                 onPress={submitReject}
+                disabled={!selectedBehavior}
               >
                 <Text style={styles.rejectConfirmText}>Reject request</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={behaviorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setBehaviorModalVisible(false);
+          setSelectedBehavior("");
+        }}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={styles.rejectModalCard}>
+            <View style={styles.photoModalHeader}>
+              <Text style={styles.photoModalTitle}>Approve request</Text>
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setBehaviorModalVisible(false);
+                  setSelectedBehavior("");
+                }}
+              >
+                <Ionicons name="close" size={18} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.rejectHelpText}>
+              Rate the user&lsquo;s behavior before approving the request.
+            </Text>
+
+            <View style={styles.behaviorGrid}>
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Good" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.successSoft, borderColor: COLORS.success },
+                ]}
+                onPress={() => setSelectedBehavior("Good")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Good" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.success}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.success }]}>Good</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Normal" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.blueSoft, borderColor: COLORS.blue },
+                ]}
+                onPress={() => setSelectedBehavior("Normal")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Normal" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.blue}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.blue }]}>Normal</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Severe" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.amberSoft, borderColor: COLORS.amber },
+                ]}
+                onPress={() => setSelectedBehavior("Severe")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Severe" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.amber}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.amber }]}>Severe</Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.behaviorOption,
+                  selectedBehavior === "Indisciplined" && styles.behaviorOptionSelected,
+                  { backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger },
+                ]}
+                onPress={() => setSelectedBehavior("Indisciplined")}
+              >
+                <Ionicons
+                  name={selectedBehavior === "Indisciplined" ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={20}
+                  color={COLORS.danger}
+                />
+                <Text style={[styles.behaviorText, { color: COLORS.danger }]}>Indisciplined</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.rejectModalActions}>
+              <Pressable
+                style={styles.rejectCancelButton}
+                onPress={() => {
+                  setBehaviorModalVisible(false);
+                  setSelectedBehavior("");
+                }}
+              >
+                <Text style={styles.rejectCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.approveButton,
+                  !selectedBehavior && styles.disabledButton,
+                ]}
+                onPress={submitApprove}
+                disabled={!selectedBehavior}
+              >
+                <Text style={styles.approveButtonText}>Approve request</Text>
               </Pressable>
             </View>
           </View>
@@ -1630,6 +1986,10 @@ const styles = StyleSheet.create({
   detailsMiniList: {
     flex: 1,
     gap: 9,
+  },
+  detailsMiniListFull: {
+    flex: undefined,
+    width: "100%",
   },
   detailRow: {
     flexDirection: "row",
@@ -2109,6 +2469,32 @@ const styles = StyleSheet.create({
   listItemViewText: {
     color: COLORS.brand,
     fontSize: 10,
+    fontWeight: "900",
+  },
+  behaviorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  behaviorOption: {
+    width: "48%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  behaviorOptionSelected: {
+    borderWidth: 2,
+    transform: [{ scale: 1.02 }],
+  },
+  behaviorText: {
+    fontSize: 11,
     fontWeight: "900",
   },
 });
