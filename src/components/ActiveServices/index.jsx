@@ -4,7 +4,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   Modal,
@@ -19,7 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
-import CalenderVisit from "../CalenderVisit";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -46,8 +45,133 @@ const COLORS = {
 
 const USERS_WITH_SERVICES_API_PATH = "/api/admin/users";
 const GROW_CLEANING_API_PATH = "/api/grow-cleaning";
-const updateUserServiceApiPath = (userId, serviceId) =>
-  `/api/admin/users/${userId}/services/${serviceId}`;
+const REQUEST_DETAILS_API_PATH = (id) =>
+  `/api/admin/request/${encodeURIComponent(id)}`;
+const updateUserBehaviorApiPath = (userId) =>
+  `/api/admin/users/${encodeURIComponent(userId)}/behavior`;
+const USER_BEHAVIOR_OPTIONS = [
+  {
+    value: "Good",
+    icon: "checkmark-circle-outline",
+    accent: COLORS.success,
+    soft: COLORS.successSoft,
+  },
+  {
+    value: "Normal",
+    icon: "ellipse-outline",
+    accent: COLORS.blue,
+    soft: COLORS.blueSoft,
+  },
+  {
+    value: "Severe",
+    icon: "alert-circle-outline",
+    accent: COLORS.amber,
+    soft: COLORS.amberSoft,
+  },
+  {
+    value: "Indisciplined",
+    icon: "warning-outline",
+    accent: COLORS.danger,
+    soft: COLORS.dangerSoft,
+  },
+];
+
+function getServiceName(service, fallback = "Purchased service") {
+  return (
+    service?.name ||
+    service?.serviceName ||
+    service?.service?.name ||
+    fallback
+  );
+}
+
+function getConsumerName(user, service) {
+  return (
+    service?.consumerName ||
+    service?.fullName ||
+    service?.customerName ||
+    user?.consumerName ||
+    user?.fullName ||
+    user?.name ||
+    user?.username ||
+    user?.email ||
+    "Unnamed consumer"
+  );
+}
+
+function getConsumerPhone(user, service) {
+  const phoneCandidates = [
+    service?.mobileNumber,
+    service?.primaryPhone,
+    service?.whatsappNumber,
+    service?.phoneNumber,
+    service?.phone,
+    service?.contactNumber,
+    service?.consumer?.mobileNumber,
+    service?.consumer?.phoneNumber,
+    user?.mobileNumber,
+    user?.mobile,
+    user?.phoneNumber,
+    user?.phone,
+  ];
+
+  const phone = phoneCandidates.find(
+    (value) => value !== null && value !== undefined && String(value).trim(),
+  );
+  return phone ? String(phone).trim() : "Not available";
+}
+
+function getServiceHighlight(serviceName) {
+  const name = String(serviceName || "").toLowerCase();
+
+  if (name.includes("solar") && name.includes("amc")) {
+    return {
+      icon: "sunny-outline",
+      accent: COLORS.blue,
+      soft: COLORS.blueSoft,
+      border: "#C7D2FE",
+    };
+  }
+  if (name.includes("cleaning") && name.includes("amc")) {
+    return {
+      icon: "leaf-outline",
+      accent: COLORS.success,
+      soft: COLORS.successSoft,
+      border: "#BBF7D0",
+    };
+  }
+  if (name.includes("cleaning")) {
+    return {
+      icon: "water-outline",
+      accent: COLORS.cyan,
+      soft: COLORS.cyanSoft,
+      border: "#A5F3FC",
+    };
+  }
+  if (name.includes("electrical")) {
+    return {
+      icon: "flash-outline",
+      accent: "#8B5CF6",
+      soft: "#F5F3FF",
+      border: "#DDD6FE",
+    };
+  }
+  if (name.includes("solar")) {
+    return {
+      icon: "sunny-outline",
+      accent: COLORS.amber,
+      soft: COLORS.amberSoft,
+      border: "#FDE68A",
+    };
+  }
+
+  return {
+    icon: "construct-outline",
+    accent: COLORS.brand,
+    soft: COLORS.surfaceAlt,
+    border: COLORS.border,
+  };
+}
 
 function buildGrowCleaningUrl(user) {
   const params = new URLSearchParams();
@@ -227,6 +351,20 @@ function normalizeDateValue(value) {
   return null;
 }
 
+function normalizeVisitStatus(value) {
+  const rawStatus = String(value || "UpComing").trim();
+  const normalizedStatus = rawStatus.toLowerCase();
+  if (normalizedStatus.includes("completed")) return "Completed";
+  if (normalizedStatus.includes("issue")) return "Issue Reported";
+  if (
+    normalizedStatus.includes("pending") ||
+    normalizedStatus.includes("upcoming")
+  ) {
+    return "Pending";
+  }
+  return rawStatus;
+}
+
 function getVisitDateSource(service, user) {
   // Prefer a populated array. An empty alias on `service` must not hide the
   // populated `user.consumerManagement.selectedVisits` array from MongoDB.
@@ -304,17 +442,74 @@ function getVisitDateEntries(service, user) {
         return null;
       }
 
+      const status = normalizeVisitStatus(entry?.status);
+
       return {
         index,
         __visitIndex: index,
         value: dateKey,
         dateKey,
         date: value,
+        status,
+        isCompleted: status === "Completed",
+        completedAt:
+          entry?.submittedAt ||
+          entry?.completedAt ||
+          entry?.serviceDate ||
+          entry?.completionDate ||
+          null,
         isoDate: toUtcMiddayIso(dateKey),
         id: entry?._id || entry?.id || entry?.visitId || `${index}-${dateKey}`,
+        assignedTechnicianName: entry?.assignedTechnicianName || "",
+        issueNote: entry?.issueNote || "",
+        beforePhotoUrl: entry?.beforePhotoUrl || "",
+        afterPhotoUrl: entry?.afterPhotoUrl || "",
+        submittedAt: entry?.submittedAt || null,
       };
     })
     .filter(Boolean);
+}
+
+function mergeVisitIntoSource(service, user, visitIndex, updatedVisit) {
+  const source = getVisitDateSource(service, user);
+  if (!source) return { service, user };
+
+  const entries = source.entries.map((entry, index) =>
+    index === visitIndex ? { ...entry, ...updatedVisit } : entry,
+  );
+
+  if (source.owner === "service") {
+    return {
+      service: { ...service, [source.field]: entries },
+      user,
+    };
+  }
+  if (source.owner === "serviceConsumerManagement") {
+    return {
+      service: {
+        ...service,
+        consumerManagement: {
+          ...service.consumerManagement,
+          [source.field]: entries,
+        },
+      },
+      user,
+    };
+  }
+  if (source.owner === "user") {
+    return { service, user: { ...user, [source.field]: entries } };
+  }
+
+  return {
+    service,
+    user: {
+      ...user,
+      consumerManagement: {
+        ...user.consumerManagement,
+        [source.field]: entries,
+      },
+    },
+  };
 }
 
 function formatDate(value) {
@@ -425,7 +620,7 @@ function DetailPill({ icon, label, value, accent, soft }) {
   );
 }
 
-function UserAvatar({ user }) {
+function UserAvatar({ user, name }) {
   if (user?.photoURL) {
     return <Image source={{ uri: user.photoURL }} style={styles.avatarImage} />;
   }
@@ -433,7 +628,7 @@ function UserAvatar({ user }) {
   return (
     <View style={styles.avatarFallback}>
       <Text style={styles.avatarInitials}>
-        {getInitials(user?.username || user?.fullName, user?.email)}
+        {getInitials(name || getConsumerName(user), user?.email)}
       </Text>
     </View>
   );
@@ -456,9 +651,10 @@ function FilterChip({ item, count, active, onPress }) {
 }
 
 function UserListRow({ user, service, serviceIndex, active, onViewDetails }) {
-  const userName = user?.username || user?.fullName || "Unnamed user";
+  const consumerName = getConsumerName(user, service);
   const consumerNumber = getConsumerNumber(user, service);
-  const serviceName = service?.name || "Purchased service";
+  const serviceName = getServiceName(service);
+  const serviceHighlight = getServiceHighlight(serviceName);
   const statusColor = active ? COLORS.success : COLORS.danger;
 
   return (
@@ -467,13 +663,13 @@ function UserListRow({ user, service, serviceIndex, active, onViewDetails }) {
         <View style={styles.listRowIdentity}>
           <View style={styles.listAvatarWrap}>
             <Text style={styles.listAvatarText}>
-              {getInitials(user?.username || user?.fullName, user?.email)}
+              {getInitials(consumerName, user?.email)}
             </Text>
           </View>
 
           <View style={styles.listRowTextWrap}>
             <Text style={styles.listUserName} numberOfLines={1}>
-              {userName}
+              {consumerName}
             </Text>
             <Text style={styles.listConsumerText} numberOfLines={1}>
               Consumer no: {consumerNumber}
@@ -499,7 +695,30 @@ function UserListRow({ user, service, serviceIndex, active, onViewDetails }) {
       </View>
 
       <View style={styles.listRowMeta}>
-        <Text style={styles.listMetaText}>{serviceName}</Text>
+        <View
+          style={[
+            styles.listServiceBadge,
+            {
+              backgroundColor: serviceHighlight.soft,
+              borderColor: serviceHighlight.border,
+            },
+          ]}
+        >
+          <Ionicons
+            name={serviceHighlight.icon}
+            size={12}
+            color={serviceHighlight.accent}
+          />
+          <Text
+            style={[
+              styles.listServiceBadgeText,
+              { color: serviceHighlight.accent },
+            ]}
+            numberOfLines={1}
+          >
+            {serviceName}
+          </Text>
+        </View>
         <Text style={styles.listMetaText}>
           {active ? "Active access" : "Blocked access"}
         </Text>
@@ -513,55 +732,118 @@ function UserListRow({ user, service, serviceIndex, active, onViewDetails }) {
   );
 }
 
-function ServiceCard({
-  user,
-  service,
-  serviceIndex,
-  processingKey,
-  onBlock,
-  onUnblock,
-  onPress,
-  onEditVisitDate,
-}) {
-  const userId = getUserId(user);
-  const serviceId = getServiceId(service, serviceIndex);
+function BehaviorEditor({ user, selectedBehavior, isSaving, onSelect, onSave }) {
+  const history = Array.isArray(user?.behaviorHistory)
+    ? [...user.behaviorHistory].reverse().slice(0, 3)
+    : [];
+
+  return (
+    <View style={styles.behaviorCard}>
+      <View style={styles.behaviorHeader}>
+        <View style={styles.behaviorHeaderText}>
+          <Text style={styles.behaviorTitle}>User behavior</Text>
+          <Text style={styles.behaviorSubtitle}>
+            Set or update user behavior.
+          </Text>
+        </View>
+        <View style={styles.currentBehaviorBadge}>
+          <Text style={styles.currentBehaviorLabel}>Current</Text>
+          <Text style={styles.currentBehaviorValue}>
+            {user?.behavior || "Not rated"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.behaviorOptions}>
+        {USER_BEHAVIOR_OPTIONS.map((option) => {
+          const selected = selectedBehavior === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect(option.value)}
+              style={[
+                styles.behaviorOption,
+                {
+                  backgroundColor: option.soft,
+                  borderColor: selected ? option.accent : COLORS.border,
+                },
+                selected && styles.behaviorOptionSelected,
+              ]}
+            >
+              <Ionicons
+                name={selected ? "checkmark-circle" : option.icon}
+                size={17}
+                color={option.accent}
+              />
+              <Text style={[styles.behaviorOptionText, { color: option.accent }]}>
+                {option.value}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={onSave}
+        disabled={
+          !selectedBehavior || selectedBehavior === user?.behavior || isSaving
+        }
+        style={[
+          styles.saveBehaviorButton,
+          (!selectedBehavior ||
+            selectedBehavior === user?.behavior ||
+            isSaving) &&
+            styles.disabledButton,
+        ]}
+      >
+        {isSaving ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Ionicons name="save-outline" size={16} color="#FFFFFF" />
+        )}
+        <Text style={styles.saveBehaviorText}>
+          {isSaving ? "Saving behavior" : "Save behavior"}
+        </Text>
+      </Pressable>
+
+      {history.length > 0 ? (
+        <View style={styles.behaviorHistory}>
+          <Text style={styles.behaviorHistoryTitle}>Recent ratings</Text>
+          {history.map((entry, index) => (
+            <View
+              key={`${entry.recordedAt || entry.behavior}-${index}`}
+              style={styles.behaviorHistoryRow}
+            >
+              <Text style={styles.behaviorHistoryValue}>
+                {entry.behavior || "Not rated"}
+              </Text>
+              <Text style={styles.behaviorHistoryMeta}>
+                {entry.action === "updated" ? "Updated" : entry.action || "Rated"}
+                {" · "}
+                {formatDate(entry.recordedAt)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ServiceCard({ user, service, onPress, onVisitPress }) {
   const active = isServiceActive(service);
-  const actionKey = `${userId}-${serviceId}`;
-  const isProcessing = processingKey === actionKey;
   const serviceAccent = active ? COLORS.success : COLORS.danger;
   const serviceSoft = active ? COLORS.successSoft : COLORS.dangerSoft;
+  const consumerName = getConsumerName(user, service);
+  const serviceName = getServiceName(service);
+  const serviceHighlight = getServiceHighlight(serviceName);
   const visitDates = React.useMemo(
     () => getVisitDateEntries(service, user),
     [service, user],
   );
-  const [calendarEditor, setCalendarEditor] = React.useState(null);
- 
-  const openVisitCalendar = (visitIndex, currentDate) => {
-    const allSelectedVisits = visitDates.map((visit) => ({
-      date: visit.dateKey || formatDateKey(visit.date),
-      status: "Pending",
-      __visitIndex:
-        visit.__visitIndex != null
-          ? visit.__visitIndex
-          : visit.index != null
-            ? visit.index
-            : undefined,
-    }));
-
-    const targetKey = currentDate ? formatDateKey(currentDate) : null;
-
-    const selectedVisits = targetKey
-      ? [
-          ...allSelectedVisits.filter((visit) => visit.date === targetKey),
-          ...allSelectedVisits.filter((visit) => visit.date !== targetKey),
-        ]
-      : allSelectedVisits;
-
-    setCalendarEditor({
-      visitIndex,
-      selectedVisits,
-    });
-  };
 
   const cardContent = (
     <View style={styles.serviceCard}>
@@ -575,10 +857,10 @@ function ServiceCard({
 
       <View style={styles.serviceTopRow}>
         <View style={styles.userBlock}>
-          <UserAvatar user={user} />
+          <UserAvatar user={user} name={consumerName} />
           <View style={styles.userTextWrap}>
             <Text style={styles.userName} numberOfLines={1}>
-              {user?.username || user?.fullName || "Unnamed user"}
+              {consumerName}
             </Text>
             <Text style={styles.userMeta} numberOfLines={1}>
               {user?.email || "No email"}
@@ -596,19 +878,39 @@ function ServiceCard({
         </View>
       </View>
 
-      <View style={styles.servicePanel}>
+      <View
+        style={[
+          styles.servicePanel,
+          {
+            backgroundColor: serviceHighlight.soft,
+            borderColor: serviceHighlight.border,
+          },
+        ]}
+      >
         <View
-          style={[styles.serviceIconWrap, { backgroundColor: serviceSoft }]}
+          style={[
+            styles.serviceIconWrap,
+            {
+              backgroundColor: serviceHighlight.soft,
+              borderColor: serviceHighlight.border,
+            },
+          ]}
         >
           <Ionicons
-            name={active ? "shield-checkmark-outline" : "ban-outline"}
+            name={serviceHighlight.icon}
             size={20}
-            color={serviceAccent}
+            color={serviceHighlight.accent}
           />
         </View>
         <View style={styles.serviceTextWrap}>
-          <Text style={styles.serviceName} numberOfLines={1}>
-            {service?.name || "Purchased service"}
+          <Text
+            style={[
+              styles.serviceName,
+              { color: serviceHighlight.accent },
+            ]}
+            numberOfLines={1}
+          >
+            {serviceName}
           </Text>
           <Text style={styles.serviceSubText}>
             Registered {formatDate(service?.reg_date || service?.createdAt)}
@@ -620,7 +922,7 @@ function ServiceCard({
         <DetailPill
           icon="call-outline"
           label="Mobile no."
-          value={user?.mobileNumber || user?.mobile || "Not available"}
+          value={getConsumerPhone(user, service)}
           accent={COLORS.brand}
           soft="#E8F4F7"
         />
@@ -635,35 +937,72 @@ function ServiceCard({
 
       <View style={styles.visitDatesSection}>
         <View style={styles.visitDatesHeaderRow}>
-          <Text style={styles.visitDatesTitle}>Visit dates</Text>
+          <Text style={styles.visitDatesTitle}>Visit Summary</Text>
           <View style={styles.visitCountBadge}>
             <Text style={styles.visitCountBadgeText}>{visitDates.length}</Text>
           </View>
         </View>
 
         {visitDates.length > 0 ? (
-          <View style={styles.visitDatesRow}>
+          <View style={styles.visitTable}>
+            <View style={styles.visitTableHeader}>
+              <Text style={[styles.visitTableHeading, styles.scheduleColumn]}>
+                Schedule Date
+              </Text>
+              <Text style={[styles.visitTableHeading, styles.serviceDateColumn]}>
+                Service Date
+              </Text>
+              <Text style={[styles.visitTableHeading, styles.visitStatusColumn]}>
+                Status
+              </Text>
+            </View>
             {visitDates.map((visit) => (
               <Pressable
                 key={visit.id}
-                style={styles.visitDateChip}
-                onPress={() => openVisitCalendar(visit.index, visit.date)}
+                accessibilityRole="button"
+                accessibilityLabel={`View visit scheduled ${formatDate(visit.date)}, status ${visit.status}`}
+                onPress={() => onVisitPress?.(service, user, visit)}
+                style={styles.visitTableRow}
               >
-                <Ionicons
-                  name="calendar-outline"
-                  size={13}
-                  color={COLORS.brand}
-                />
-                <Text style={styles.visitDateText}>
+                <Text style={[styles.visitTableCell, styles.scheduleColumn]}>
                   {formatDate(visit.date)}
                 </Text>
+                <Text
+                  style={[
+                    styles.visitTableCell,
+                    styles.serviceDateColumn,
+                    !visit.completedAt && styles.visitDateUnavailable,
+                  ]}
+                >
+                  {visit.isCompleted && visit.completedAt
+                    ? formatDate(visit.completedAt)
+                    : "—"}
+                </Text>
+                <View style={[styles.visitStatusColumn, styles.visitStatusWrap]}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.visitStatusBadge,
+                      visit.isCompleted
+                        ? styles.visitCompletedBadge
+                        : styles.visitPendingBadge,
+                    ]}
+                  >
+                    {visit.status}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={13}
+                  color={COLORS.faint}
+                  style={styles.visitOpenIcon}
+                />
               </Pressable>
             ))}
           </View>
         ) : (
           <Text style={styles.emptyVisitText}>No visit dates added</Text>
         )}
-        <Text style={styles.visitDatesHint}>Tap a visit date to edit it.</Text>
       </View>
 
       {service?.blockReason ? (
@@ -697,127 +1036,16 @@ function ServiceCard({
             Updated {formatDate(user?.updatedAt)}
           </Text>
         </View>
-
-        {active ? (
-          <Pressable
-            style={[styles.blockButton, isProcessing && styles.disabledButton]}
-            onPress={() => onBlock(user, service, serviceIndex)}
-            disabled={Boolean(processingKey)}
-          >
-            {isProcessing ? (
-              <ActivityIndicator color={COLORS.danger} size="small" />
-            ) : (
-              <Ionicons name="ban-outline" size={16} color={COLORS.danger} />
-            )}
-            <Text style={styles.blockButtonText}>Block</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={[
-              styles.unblockButton,
-              isProcessing && styles.disabledButton,
-            ]}
-            onPress={() => onUnblock(user, service, serviceIndex)}
-            disabled={Boolean(processingKey)}
-          >
-            {isProcessing ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={16}
-                color="#FFFFFF"
-              />
-            )}
-            <Text style={styles.unblockButtonText}>Unblock</Text>
-          </Pressable>
-        )}
       </View>
     </View>
   );
 
-  if (onPress) {
-    return (
-      <>
-        <Pressable onPress={onPress} style={styles.cardTouchTarget}>
-          {cardContent}
-        </Pressable>
-
-        <Modal
-          visible={Boolean(calendarEditor)}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setCalendarEditor(null)}
-        >
-          <View style={styles.dateModalOverlay}>
-            <View style={styles.dateModalCard}>
-              <CalenderVisit
-                previousData={{
-                  selectedVisits: calendarEditor?.selectedVisits || [],
-                  requestId: serviceId,
-                  applicationId: serviceId,
-                  _id: serviceId,
-                }}
-                requestId={serviceId}
-                onDataChange={({ selectedVisits }) =>
-                  setCalendarEditor((current) =>
-                    current ? { ...current, selectedVisits } : current,
-                  )
-                }
-                onServerChange={async () => {
-                  await onEditVisitDate?.();
-                }}
-                onModify={async () => {
-                  setCalendarEditor(null);
-                }}
-                submitLabel="Modify"
-                showSubmitButton
-              />
-            </View>
-          </View>
-        </Modal>
-      </>
-    );
-  }
-
-  return (
-    <>
+  return onPress ? (
+    <Pressable onPress={onPress} style={styles.cardTouchTarget}>
       {cardContent}
-
-      <Modal
-        visible={Boolean(calendarEditor)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCalendarEditor(null)}
-      >
-        <View style={styles.dateModalOverlay}>
-          <View style={styles.dateModalCard}>
-            <CalenderVisit
-              previousData={{
-                selectedVisits: calendarEditor?.selectedVisits || [],
-                requestId: serviceId,
-                applicationId: serviceId,
-                _id: serviceId,
-              }}
-              requestId={serviceId}
-              onDataChange={({ selectedVisits }) =>
-                setCalendarEditor((current) =>
-                  current ? { ...current, selectedVisits } : current,
-                )
-              }
-              onServerChange={async () => {
-                await onEditVisitDate?.();
-              }}
-              onModify={async () => {
-                setCalendarEditor(null);
-              }}
-              submitLabel="Modify"
-              showSubmitButton
-            />
-          </View>
-        </View>
-      </Modal>
-    </>
+    </Pressable>
+  ) : (
+    cardContent
   );
 }
 
@@ -828,12 +1056,14 @@ export default function AdminActiveUserServices() {
   const [errorMessage, setErrorMessage] = React.useState("");
   const [activeFilter, setActiveFilter] = React.useState("all");
   const [searchText, setSearchText] = React.useState("");
-  const [processingKey, setProcessingKey] = React.useState("");
-  const [blockTarget, setBlockTarget] = React.useState(null);
-  const [blockReason, setBlockReason] = React.useState("");
   const [currentView, setCurrentView] = React.useState("categories");
   const [selectedCategory, setSelectedCategory] = React.useState(null);
   const [selectedService, setSelectedService] = React.useState(null);
+  const [selectedVisit, setSelectedVisit] = React.useState(null);
+  const [isLoadingVisit, setIsLoadingVisit] = React.useState(false);
+  const [visitDetailsError, setVisitDetailsError] = React.useState("");
+  const [selectedBehavior, setSelectedBehavior] = React.useState("");
+  const [isSavingBehavior, setIsSavingBehavior] = React.useState(false);
 
   const fetchUsers = React.useCallback(async ({ refreshing = false } = {}) => {
     if (refreshing) {
@@ -886,17 +1116,31 @@ export default function AdminActiveUserServices() {
               return user;
             }
 
+            const applicationServices = applications.map((app, index) => ({
+              ...app,
+              _id: app?._id || app?.id || `service-${index}`,
+              name:
+                app?.name ||
+                app?.serviceName ||
+                app?.service?.name ||
+                "Purchased service",
+            }));
+            const applicationServiceNames = applicationServices.map((service) =>
+              getServiceName(service).toLowerCase().replace(/[^a-z0-9]/g, ""),
+            );
+            const otherServices = getServiceList(user).filter((service) => {
+              const serviceName = getServiceName(service)
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "");
+              return !applicationServiceNames.some(
+                (applicationServiceName) =>
+                  serviceName === applicationServiceName,
+              );
+            });
+
             return {
               ...user,
-              service: applications.map((app, index) => ({
-                ...app,
-                _id: app?._id || app?.id || `service-${index}`,
-                name:
-                  app?.name ||
-                  app?.serviceName ||
-                  app?.service?.name ||
-                  "Purchased service",
-              })),
+              service: [...applicationServices, ...otherServices],
             };
           } catch {
             return user;
@@ -963,7 +1207,7 @@ export default function AdminActiveUserServices() {
     const groups = {};
 
     serviceRows.forEach((row) => {
-      const serviceName = row?.service?.name || "Other Services";
+      const serviceName = getServiceName(row?.service, "Other Services");
       if (!groups[serviceName]) {
         groups[serviceName] = [];
       }
@@ -1008,11 +1252,13 @@ export default function AdminActiveUserServices() {
       }
 
       const searchable = [
+        getConsumerName(user, service),
+        getConsumerPhone(user, service),
         user?.username,
         user?.fullName,
         user?.email,
         user?.provider,
-        service?.name,
+        getServiceName(service),
         getUserId(user),
         getServiceId(service, 0),
       ]
@@ -1023,220 +1269,6 @@ export default function AdminActiveUserServices() {
       return searchable.includes(query);
     });
   }, [activeFilter, searchText, selectedCategoryRows]);
-
-  const refreshServiceVisitDates = async (user, service, serviceIndex) => {
-    const userId = getUserId(user);
-    const serviceId = getServiceId(service, serviceIndex);
-
-    if (!userId || !serviceId) {
-      Alert.alert("Missing service", "This service cannot be refreshed.");
-      return;
-    }
-
-    try {
-      // CalenderVisit already writes DELETE/PATCH changes. Never issue a
-      // second, differently-shaped PATCH here. Rehydrate from GET instead so
-      // Active Services and the open detail card use the MongoDB truth.
-      const freshUsers = await fetchUsers({ refreshing: true });
-      const freshUser = freshUsers.find(
-        (candidate) => getUserId(candidate) === userId,
-      );
-      const freshService = getServiceList(freshUser).find(
-        (candidate, index) => getServiceId(candidate, index) === serviceId,
-      );
-
-      if (freshUser && freshService) {
-        setSelectedService((current) =>
-          current && getUserId(current.user) === userId
-            ? {
-                ...current,
-                user: freshUser,
-                service: freshService,
-                active: !isServiceBlocked(freshService),
-                blocked: isServiceBlocked(freshService),
-              }
-            : current,
-        );
-      }
-    } catch (error) {
-      Alert.alert(
-        "Refresh failed",
-        error?.message || "Please pull to refresh.",
-      );
-    }
-  };
-
-  const patchService = async ({
-    user,
-    service,
-    serviceIndex,
-    active,
-    reason = "",
-  }) => {
-    const userId = getUserId(user);
-    const serviceId = getServiceId(service, serviceIndex);
-
-    if (!userId || !serviceId) {
-      Alert.alert("Missing record ID", "This service cannot be updated.");
-      return;
-    }
-
-    const actionKey = `${userId}-${serviceId}`;
-    setProcessingKey(actionKey);
-
-    const nextBlocked = !isServiceBlocked(service);
-
-    try {
-      const response = await safeFetch(
-        getApiUrl(updateUserServiceApiPath(userId, serviceId)),
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            active: true,
-            blocked: nextBlocked,
-            serviceStatus: nextBlocked ? "blocked" : "active",
-            blockReason: nextBlocked ? reason : "",
-            blockedAt: nextBlocked ? new Date().toISOString() : null,
-            unblockedAt: nextBlocked ? null : new Date().toISOString(),
-          }),
-        },
-      );
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Unable to update service.");
-      }
-
-      setUsers((currentUsers) =>
-        currentUsers.map((currentUser) => {
-          if (getUserId(currentUser) !== userId) {
-            return currentUser;
-          }
-
-          return {
-            ...currentUser,
-            service: getServiceList(currentUser).map(
-              (currentService, index) => {
-                if (getServiceId(currentService, index) !== serviceId) {
-                  return currentService;
-                }
-
-                const nextBlocked = !isServiceBlocked(currentService);
-
-                return {
-                  ...currentService,
-                  active: true,
-                  blocked: nextBlocked,
-                  serviceStatus: nextBlocked ? "blocked" : "active",
-                  blockReason: nextBlocked ? reason : "",
-                };
-              },
-            ),
-          };
-        }),
-      );
-
-      setSelectedService((current) => {
-        if (!current || getUserId(current.user) !== userId) {
-          return current;
-        }
-
-        const nextUser = {
-          ...current.user,
-          service: getServiceList(current.user).map((currentService, index) => {
-            if (getServiceId(currentService, index) !== serviceId) {
-              return currentService;
-            }
-
-            const nextBlocked = !isServiceBlocked(currentService);
-
-            return {
-              ...currentService,
-              active: true,
-              blocked: nextBlocked,
-              serviceStatus: nextBlocked ? "blocked" : "active",
-              blockReason: nextBlocked ? reason : "",
-            };
-          }),
-        };
-
-        const nextService = getServiceList(nextUser).find(
-          (candidate, index) => getServiceId(candidate, index) === serviceId,
-        );
-
-        if (!nextService) {
-          return { ...current, user: nextUser };
-        }
-
-        return {
-          ...current,
-          user: nextUser,
-          service: nextService,
-          active: !isServiceBlocked(nextService),
-          blocked: isServiceBlocked(nextService),
-        };
-      });
-
-      await fetchUsers({ refreshing: true });
-
-      Alert.alert(
-        active ? "Service unblocked" : "Service blocked",
-        active
-          ? "The user can access this service again."
-          : "The service has been blocked for this user.",
-      );
-    } catch (error) {
-      Alert.alert("Update failed", error?.message || "Please try again.");
-    } finally {
-      setProcessingKey("");
-      setBlockTarget(null);
-      setBlockReason("");
-    }
-  };
-
-  const openBlockModal = (user, service, serviceIndex) => {
-    setBlockTarget({ user, service, serviceIndex });
-    setBlockReason("");
-  };
-
-  const submitBlock = () => {
-    if (!blockTarget) {
-      return;
-    }
-
-    patchService({
-      ...blockTarget,
-      active: true,
-      reason: blockReason.trim(),
-    });
-  };
-
-  const handleUnblock = (user, service, serviceIndex) => {
-    Alert.alert(
-      "Unblock service",
-      `Allow access to "${service?.name || "this service"}" again?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Unblock",
-          onPress: () =>
-            patchService({
-              user,
-              service,
-              serviceIndex,
-              active: true,
-            }),
-        },
-      ],
-    );
-  };
 
   const handleBackToCategories = () => {
     setCurrentView("categories");
@@ -1281,7 +1313,186 @@ export default function AdminActiveUserServices() {
 
   const handleServiceSelect = (row) => {
     setSelectedService(row);
+    setSelectedBehavior(row.user?.behavior || "");
     setCurrentView("detail");
+  };
+
+  const handleVisitSelect = async (service, user, visit) => {
+    const requestId = String(
+      service?._id || service?.id || service?.serviceId || "",
+    );
+    const visitIndex = Number(visit?.__visitIndex);
+    setSelectedVisit({
+      scheduledDate: visit?.date,
+      serviceDate: visit?.completedAt,
+      status: visit?.status || "Pending",
+      technicianName: visit?.assignedTechnicianName || "",
+      issueNote: visit?.issueNote || "",
+      beforePhotoUrl: visit?.beforePhotoUrl || "",
+      afterPhotoUrl: visit?.afterPhotoUrl || "",
+      serviceName: getServiceName(service),
+      consumerName: getConsumerName(user, service),
+    });
+    setVisitDetailsError("");
+    setIsLoadingVisit(true);
+
+    try {
+      if (!/^[a-f\d]{24}$/i.test(requestId) || !Number.isInteger(visitIndex)) {
+        throw new Error("This visit is missing its request or visit identifier.");
+      }
+
+      const response = await safeFetch(
+        getApiUrl(REQUEST_DETAILS_API_PATH(requestId)),
+        { method: "GET" },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success || !payload?.data) {
+        throw new Error(
+          payload?.message || "Unable to load this visit's latest response.",
+        );
+      }
+
+      const visits =
+        payload.data.consumerManagement?.selectedVisits ||
+        payload.data.selectedVisits ||
+        [];
+      const latestVisit = visits[visitIndex];
+      if (!latestVisit) {
+        throw new Error("The requested visit was not found.");
+      }
+
+      const refreshedVisit = {
+        ...latestVisit,
+        date: latestVisit.date || visit.date,
+        status: normalizeVisitStatus(latestVisit.status || visit.status),
+        submittedAt:
+          latestVisit.submittedAt ||
+          latestVisit.completedAt ||
+          latestVisit.serviceDate ||
+          null,
+      };
+      const refreshed = mergeVisitIntoSource(
+        service,
+        user,
+        visitIndex,
+        refreshedVisit,
+      );
+      const serviceId = String(getServiceId(service, 0));
+      const userId = String(getUserId(user) || "");
+
+      setSelectedService((current) =>
+        current &&
+        String(getServiceId(current.service, current.serviceIndex)) ===
+          serviceId
+          ? {
+              ...current,
+              service: refreshed.service,
+              user: refreshed.user,
+            }
+          : current,
+      );
+      if (userId) {
+        setUsers((currentUsers) =>
+          currentUsers.map((currentUser) => {
+            if (String(getUserId(currentUser) || "") !== userId) {
+              return currentUser;
+            }
+            const services = getServiceList(currentUser);
+            let updatedUser = currentUser;
+            const updatedServices = services.map((currentService, index) => {
+              if (String(getServiceId(currentService, index)) !== serviceId) {
+                return currentService;
+              }
+              const merged = mergeVisitIntoSource(
+                currentService,
+                updatedUser,
+                visitIndex,
+                refreshedVisit,
+              );
+              updatedUser = merged.user;
+              return merged.service;
+            });
+            return Array.isArray(updatedUser.service)
+              ? { ...updatedUser, service: updatedServices }
+              : { ...updatedUser, services: updatedServices };
+          }),
+        );
+      }
+
+      setSelectedVisit({
+        scheduledDate: refreshedVisit.date,
+        serviceDate:
+          refreshedVisit.submittedAt ||
+          refreshedVisit.completedAt ||
+          null,
+        status: refreshedVisit.status,
+        technicianName:
+          latestVisit.assignedTechnicianName ||
+          visit.assignedTechnicianName ||
+          "",
+        issueNote: latestVisit.issueNote || "",
+        beforePhotoUrl: latestVisit.beforePhotoUrl || "",
+        afterPhotoUrl: latestVisit.afterPhotoUrl || "",
+        serviceName: getServiceName(service),
+        consumerName: getConsumerName(user, service),
+      });
+    } catch (error) {
+      setVisitDetailsError(
+        error?.message || "Unable to load this visit's latest response.",
+      );
+    } finally {
+      setIsLoadingVisit(false);
+    }
+  };
+
+  const saveUserBehavior = async () => {
+    if (!selectedService || !selectedBehavior) return;
+
+    const userId = getUserId(selectedService.user);
+    if (!userId) {
+      Alert.alert("Missing user ID", "This user's behavior cannot be updated.");
+      return;
+    }
+
+    setIsSavingBehavior(true);
+    try {
+      const response = await safeFetch(
+        getApiUrl(updateUserBehaviorApiPath(userId)),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            behavior: selectedBehavior,
+            serviceName: getServiceName(selectedService.service),
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.message || "Unable to update user behavior.");
+      }
+
+      const behavior = payload.data?.behavior || selectedBehavior;
+      const behaviorHistory = Array.isArray(payload.data?.behaviorHistory)
+        ? payload.data.behaviorHistory
+        : selectedService.user?.behaviorHistory || [];
+      const updateUser = (user) =>
+        String(getUserId(user)) === String(userId)
+          ? { ...user, behavior, behaviorHistory }
+          : user;
+      setUsers((currentUsers) => currentUsers.map(updateUser));
+      setSelectedService((current) =>
+        current && String(getUserId(current.user)) === String(userId)
+          ? { ...current, user: updateUser(current.user) }
+          : current,
+      );
+      setSelectedBehavior(behavior);
+      Alert.alert("Behavior updated", "The user's behavior rating was saved.");
+    } catch (error) {
+      Alert.alert("Update failed", error?.message || "Please try again.");
+    } finally {
+      setIsSavingBehavior(false);
+    }
   };
 
   const renderCategoriesView = () => (
@@ -1310,10 +1521,9 @@ export default function AdminActiveUserServices() {
           </View>
         </View>
 
-        <Text style={styles.heroTitle}>Manage every purchased service.</Text>
+        <Text style={styles.heroTitle}>Review purchased services.</Text>
         <Text style={styles.heroSubtitle}>
-          Review user service access, monitor active and blocked services, and
-          restrict access when admin action is required.
+          View consumer details, service status, visit dates, and behavior history.
         </Text>
 
         <View style={styles.heroStatsRow}>
@@ -1332,7 +1542,7 @@ export default function AdminActiveUserServices() {
         </View>
       </LinearGradient>
 
-      <View style={styles.statsGrid}>
+      {/* <View style={styles.statsGrid}>
         <StatCard
           label="Purchased services"
           value={String(counts.all)}
@@ -1354,7 +1564,7 @@ export default function AdminActiveUserServices() {
           accent={COLORS.danger}
           soft={COLORS.dangerSoft}
         />
-      </View>
+      </View> */}
 
       <View style={styles.sectionHeader}>
         <View>
@@ -1553,7 +1763,7 @@ export default function AdminActiveUserServices() {
       return null;
     }
 
-    const { user, service, serviceIndex } = selectedService;
+    const { user, service } = selectedService;
 
     return (
       <>
@@ -1567,13 +1777,14 @@ export default function AdminActiveUserServices() {
         <ServiceCard
           user={user}
           service={service}
-          serviceIndex={serviceIndex}
-          processingKey={processingKey}
-          onBlock={openBlockModal}
-          onUnblock={handleUnblock}
-          onEditVisitDate={async () =>
-            refreshServiceVisitDates(user, service, serviceIndex)
-          }
+          onVisitPress={handleVisitSelect}
+        />
+        <BehaviorEditor
+          user={user}
+          selectedBehavior={selectedBehavior}
+          isSaving={isSavingBehavior}
+          onSelect={setSelectedBehavior}
+          onSave={saveUserBehavior}
         />
       </>
     );
@@ -1602,69 +1813,137 @@ export default function AdminActiveUserServices() {
       </ScrollView>
 
       <Modal
-        visible={Boolean(blockTarget)}
-        transparent
         animationType="fade"
-        onRequestClose={() => setBlockTarget(null)}
+        onRequestClose={() => {
+          setSelectedVisit(null);
+          setVisitDetailsError("");
+        }}
+        transparent
+        visible={Boolean(selectedVisit)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.blockModalCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Block service</Text>
-                <Text style={styles.modalSubtitle}>
-                  Restrict this user from accessing the selected service.
-                </Text>
+        <View style={styles.visitModalOverlay}>
+          <View style={styles.visitModalCard}>
+            <View style={styles.visitModalHeader}>
+              <View style={styles.visitModalTitleWrap}>
+                <Text style={styles.visitModalEyebrow}>VISIT SUMMARY</Text>
+                <Text style={styles.visitModalTitle}>Service visit</Text>
               </View>
               <Pressable
-                style={styles.modalCloseButton}
-                onPress={() => setBlockTarget(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Close visit details"
+                onPress={() => {
+                  setSelectedVisit(null);
+                  setVisitDetailsError("");
+                }}
+                style={styles.visitModalClose}
               >
-                <Ionicons name="close" size={18} color={COLORS.text} />
+                <Ionicons name="close" size={21} color={COLORS.muted} />
               </Pressable>
             </View>
 
-            <View style={styles.blockTargetBox}>
-              <Ionicons name="ban-outline" size={18} color={COLORS.danger} />
-              <View style={styles.blockTargetTextWrap}>
-                <Text style={styles.blockTargetTitle}>
-                  {blockTarget?.service?.name || "Selected service"}
-                </Text>
-                <Text style={styles.blockTargetSubtitle}>
-                  {blockTarget?.user?.username ||
-                    blockTarget?.user?.email ||
-                    "Selected user"}
-                </Text>
-              </View>
-            </View>
+            <ScrollView
+              contentContainerStyle={styles.visitModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {isLoadingVisit ? (
+                <View style={styles.visitModalLoading}>
+                  <ActivityIndicator size="small" color={COLORS.brand} />
+                  <Text style={styles.visitModalLoadingText}>
+                    Refreshing visit response...
+                  </Text>
+                </View>
+              ) : null}
+              {visitDetailsError ? (
+                <View style={styles.visitModalError}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={17}
+                    color={COLORS.danger}
+                  />
+                  <Text style={styles.visitModalErrorText}>
+                    {visitDetailsError}
+                  </Text>
+                </View>
+              ) : null}
 
-            <TextInput
-              value={blockReason}
-              onChangeText={setBlockReason}
-              placeholder="Reason for blocking, admin note, or missing requirement"
-              placeholderTextColor={COLORS.faint}
-              multiline
-              textAlignVertical="top"
-              style={styles.blockInput}
-            />
+              {selectedVisit ? (
+                <>
+                  <Text style={styles.visitModalConsumer}>
+                    {selectedVisit.consumerName}
+                  </Text>
+                  <Text style={styles.visitModalService}>
+                    {selectedVisit.serviceName}
+                  </Text>
+                  <View style={styles.visitModalInfoGrid}>
+                    <View style={styles.visitModalInfoCell}>
+                      <Text style={styles.visitModalLabel}>Scheduled date</Text>
+                      <Text style={styles.visitModalValue}>
+                        {formatDate(selectedVisit.scheduledDate)}
+                      </Text>
+                    </View>
+                    <View style={styles.visitModalInfoCell}>
+                      <Text style={styles.visitModalLabel}>Service date</Text>
+                      <Text style={styles.visitModalValue}>
+                        {formatDate(selectedVisit.serviceDate)}
+                      </Text>
+                    </View>
+                    <View style={styles.visitModalInfoCell}>
+                      <Text style={styles.visitModalLabel}>Status</Text>
+                      <Text style={styles.visitModalValue}>
+                        {selectedVisit.status}
+                      </Text>
+                    </View>
+                    <View style={styles.visitModalInfoCell}>
+                      <Text style={styles.visitModalLabel}>Technician</Text>
+                      <Text style={styles.visitModalValue}>
+                        {selectedVisit.technicianName || "Not recorded"}
+                      </Text>
+                    </View>
+                  </View>
 
-            <View style={styles.modalActions}>
-              <Pressable
-                style={styles.modalCancelButton}
-                onPress={() => setBlockTarget(null)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.modalConfirmButton}
-                onPress={submitBlock}
-              >
-                <Text style={styles.modalConfirmText}>Block service</Text>
-              </Pressable>
-            </View>
+                  <View style={styles.visitResponsePanel}>
+                    <Text style={styles.visitResponseTitle}>
+                      Technician response
+                    </Text>
+                    <Text style={styles.visitResponseText}>
+                      {selectedVisit.issueNote ||
+                        "No written response was submitted for this visit."}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.visitResponseTitle}>Site photos</Text>
+                  {selectedVisit.beforePhotoUrl ||
+                  selectedVisit.afterPhotoUrl ? (
+                    <View style={styles.visitPhotoRow}>
+                      {[
+                        ["Before", selectedVisit.beforePhotoUrl],
+                        ["After", selectedVisit.afterPhotoUrl],
+                      ].map(([label, uri]) =>
+                        uri ? (
+                          <View key={label} style={styles.visitPhotoTile}>
+                            <Image
+                              source={{ uri }}
+                              style={styles.visitPhoto}
+                              resizeMode="cover"
+                              accessibilityLabel={`${label} site photo`}
+                            />
+                            <Text style={styles.visitPhotoLabel}>{label}</Text>
+                          </View>
+                        ) : null,
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={styles.visitModalEmptyPhotos}>
+                      No site photos were submitted.
+                    </Text>
+                  )}
+                </>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1898,6 +2177,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   sectionHeader: {
+    marginTop: 11,
     marginBottom: 11,
     flexDirection: "row",
     alignItems: "center",
@@ -2090,6 +2370,21 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "800",
   },
+  listServiceBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    maxWidth: "68%",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  listServiceBadgeText: {
+    fontSize: 8.5,
+    fontWeight: "900",
+    flexShrink: 1,
+  },
   listDetailsButton: {
     marginTop: 12,
     flexDirection: "row",
@@ -2106,6 +2401,128 @@ const styles = StyleSheet.create({
     color: COLORS.brand,
     fontSize: 10,
     fontWeight: "900",
+  },
+  behaviorCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
+  },
+  behaviorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  behaviorHeaderText: {
+    flex: 1,
+  },
+  behaviorTitle: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  behaviorSubtitle: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  currentBehaviorBadge: {
+    alignItems: "flex-end",
+    borderRadius: 11,
+    backgroundColor: COLORS.surfaceAlt,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  currentBehaviorLabel: {
+    color: COLORS.faint,
+    fontSize: 7.5,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  currentBehaviorValue: {
+    color: COLORS.brand,
+    fontSize: 9,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  behaviorOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 13,
+  },
+  behaviorOption: {
+    width: "48%",
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 9,
+    borderRadius: 11,
+    borderWidth: 1,
+  },
+  behaviorOptionSelected: {
+    borderWidth: 2,
+  },
+  behaviorOptionText: {
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  saveBehaviorButton: {
+    minHeight: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.brand,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 12,
+  },
+  saveBehaviorText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "900",
+  },
+  behaviorHistory: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: 8,
+  },
+  behaviorHistoryTitle: {
+    color: COLORS.muted,
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  behaviorHistoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  behaviorHistoryValue: {
+    color: COLORS.text,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  behaviorHistoryMeta: {
+    color: COLORS.faint,
+    fontSize: 8,
+    fontWeight: "700",
+    flexShrink: 1,
+    textAlign: "right",
   },
   serviceAccentRail: {
     position: "absolute",
@@ -2254,37 +2671,232 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "900",
   },
-  visitDatesRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  visitDateChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
+  visitTable: {
     borderColor: COLORS.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
   },
-  visitDateText: {
-    color: COLORS.brand,
-    fontSize: 9,
-    fontWeight: "800",
+  visitTableHeader: {
+    alignItems: "center",
+    backgroundColor: "#EDF3F8",
+    flexDirection: "row",
+    minHeight: 34,
+    paddingHorizontal: 9,
+  },
+  visitTableHeading: {
+    color: COLORS.muted,
+    fontSize: 8,
+    fontWeight: "900",
+    lineHeight: 11,
+    textTransform: "uppercase",
+  },
+  scheduleColumn: {
+    width: "33%",
+    paddingRight: 4,
+  },
+  serviceDateColumn: {
+    width: "33%",
+    paddingRight: 4,
+  },
+  visitStatusColumn: {
+    flex: 1,
+  },
+  visitStatusWrap: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  visitTableRow: {
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderTopColor: COLORS.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    minHeight: 37,
+    paddingHorizontal: 9,
+  },
+  visitOpenIcon: { marginLeft: 5 },
+  visitTableCell: {
+    color: COLORS.text,
+    fontSize: 8.5,
+    fontWeight: "700",
+    lineHeight: 12,
+  },
+  visitDateUnavailable: {
+    color: COLORS.faint,
+    fontWeight: "500",
+  },
+  visitStatusBadge: {
+    borderRadius: 999,
+    fontSize: 7.5,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    textAlign: "center",
+  },
+  visitCompletedBadge: {
+    backgroundColor: COLORS.successSoft,
+    color: COLORS.success,
+  },
+  visitPendingBadge: {
+    backgroundColor: COLORS.amberSoft,
+    color: "#A16207",
   },
   emptyVisitText: {
     color: COLORS.muted,
     fontSize: 9,
     fontWeight: "700",
   },
-  visitDatesHint: {
-    color: COLORS.faint,
-    fontSize: 8.5,
+  visitModalOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.56)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 18,
+  },
+  visitModalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    maxHeight: "86%",
+    maxWidth: 460,
+    overflow: "hidden",
+    padding: 18,
+    width: "100%",
+  },
+  visitModalHeader: {
+    alignItems: "center",
+    borderBottomColor: COLORS.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 13,
+  },
+  visitModalTitleWrap: { flex: 1 },
+  visitModalEyebrow: {
+    color: COLORS.brand,
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+  visitModalTitle: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+  visitModalClose: {
+    alignItems: "center",
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  visitModalContent: { paddingBottom: 4 },
+  visitModalLoading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 11,
+  },
+  visitModalLoadingText: {
+    color: COLORS.muted,
+    fontSize: 10,
     fontWeight: "700",
+  },
+  visitModalError: {
+    alignItems: "center",
+    backgroundColor: COLORS.dangerSoft,
+    borderRadius: 9,
+    flexDirection: "row",
+    gap: 7,
     marginTop: 10,
+    padding: 9,
+  },
+  visitModalErrorText: {
+    color: COLORS.danger,
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  visitModalConsumer: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "900",
+    marginTop: 14,
+  },
+  visitModalService: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  visitModalInfoGrid: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 14,
+    paddingHorizontal: 10,
+  },
+  visitModalInfoCell: {
+    minHeight: 52,
+    paddingVertical: 9,
+    width: "50%",
+  },
+  visitModalLabel: {
+    color: COLORS.muted,
+    fontSize: 8,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  visitModalValue: {
+    color: COLORS.text,
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  visitResponsePanel: {
+    backgroundColor: COLORS.cyanSoft,
+    borderRadius: 11,
+    marginBottom: 14,
+    marginTop: 14,
+    padding: 12,
+  },
+  visitResponseTitle: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  visitResponseText: {
+    color: COLORS.muted,
+    fontSize: 10,
+    lineHeight: 16,
+  },
+  visitPhotoRow: { flexDirection: "row", gap: 10, marginTop: 4 },
+  visitPhotoTile: { flex: 1 },
+  visitPhoto: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 10,
+    height: 130,
+    width: "100%",
+  },
+  visitPhotoLabel: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "800",
+    marginTop: 5,
+    textAlign: "center",
+  },
+  visitModalEmptyPhotos: {
+    color: COLORS.muted,
+    fontSize: 10,
+    marginTop: 2,
   },
   dateModalOverlay: {
     flex: 1,

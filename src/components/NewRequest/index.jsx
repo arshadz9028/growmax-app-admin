@@ -1,10 +1,10 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   Modal,
@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import CalenderVisit from "../CalenderVisit";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -141,6 +143,38 @@ function getVisitSummary(request) {
   };
 }
 
+function supportsVisitPlan(request) {
+  return String(request?.serviceName || "")
+    .toLowerCase()
+    .includes("cleaning");
+}
+
+function getAssignedRequestVisits(request) {
+  const visits = Array.isArray(request?.consumerManagement?.selectedVisits)
+    ? request.consumerManagement.selectedVisits
+    : [];
+
+  const assignedVisits = visits
+    .map((visit, visitIndex) => ({ ...visit, visitIndex }))
+    .filter((visit) => visit.assignedTechnicianId);
+  if (request?.assignedTechnicianId) {
+    assignedVisits.push({
+      visitIndex: -1,
+      assignedTechnicianId: request.assignedTechnicianId,
+      assignedTechnicianName: request.assignedTechnicianName || "",
+      status: request.inspectionStatus || "Pending",
+      isPreApprovalInspection: true,
+    });
+  }
+  return assignedVisits;
+}
+
+function getAssignableRequestVisits(request) {
+  return request?.assignedTechnicianId
+    ? []
+    : [{ visitIndex: -1, isPreApprovalInspection: true }];
+}
+
 function getServiceIcon(serviceName) {
   const name = String(serviceName || "").toLowerCase();
   if (name.includes("cleaning") && name.includes("amc")) {
@@ -197,6 +231,25 @@ function InfoChip({ icon, label, value, accent, soft }) {
         <Text style={[styles.infoChipValue, { color: accent }]}>{value}</Text>
         <Text style={styles.infoChipLabel}>{label}</Text>
       </View>
+    </View>
+  );
+}
+
+function EditableField({ icon, label, value, onChangeText, keyboardType }) {
+  return (
+    <View style={styles.editableField}>
+      <View style={styles.editableFieldLabelRow}>
+        <Ionicons name={icon} size={14} color={COLORS.brand} />
+        <Text style={styles.editableFieldLabel}>{label}</Text>
+      </View>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        placeholder="Enter value"
+        placeholderTextColor={COLORS.faint}
+        style={styles.editableFieldInput}
+      />
     </View>
   );
 }
@@ -283,8 +336,14 @@ function RequestCard({
   request,
   index,
   processingId,
+  technicianRequestId,
+  onViewTechnicianResponses,
+  savingDetailsId,
   onApprove,
   onReject,
+  onSaveDetails,
+  onRequestTechnician,
+  onEditVisits,
   onOpenPhoto,
   onOpenVisits,
 }) {
@@ -293,6 +352,49 @@ function RequestCard({
   const selectedVisits = visitSummary.selectedVisits.slice(0, 3);
   const isProcessingApprove = processingId === `approve-${requestId}`;
   const isProcessingReject = processingId === `reject-${requestId}`;
+  const isRequestingTechnician = technicianRequestId === requestId;
+  const assignedVisits = getAssignedRequestVisits(request);
+  const assignableVisits = getAssignableRequestVisits(request);
+  const hasAssignedTechnician = assignedVisits.length > 0;
+  const hasRequestTechnician = Boolean(request?.assignedTechnicianId);
+  const canAssignTechnician = assignableVisits.length > 0;
+  const supportsAmountEdit = request?.requestType !== "complaint";
+  const supportsPanelEdit =
+    request?.requestType === "grow-cleaning" ||
+    request?.requestType === "solar-amc";
+  const [amountValue, setAmountValue] = React.useState(
+    String(request?.totalAmount ?? ""),
+  );
+  const [panelsValue, setPanelsValue] = React.useState(
+    String(request?.numberOfPanels ?? ""),
+  );
+  const amountNumber = Number(amountValue);
+  const panelsNumber = Number(panelsValue);
+  const amountIsValid =
+    !supportsAmountEdit ||
+    (amountValue.trim() !== "" &&
+      Number.isFinite(amountNumber) &&
+      amountNumber >= 0);
+  const panelsAreValid =
+    !supportsPanelEdit ||
+    (panelsValue.trim() !== "" &&
+      Number.isInteger(panelsNumber) &&
+      panelsNumber >= 1);
+  const hasUnsavedChanges =
+    (supportsAmountEdit &&
+      amountValue !== String(request?.totalAmount ?? "")) ||
+    (supportsPanelEdit &&
+      panelsValue !== String(request?.numberOfPanels ?? ""));
+  const canSaveDetails =
+    hasUnsavedChanges && amountIsValid && panelsAreValid && !savingDetailsId;
+  const detailsPayload = {};
+  if (supportsAmountEdit) detailsPayload.totalAmount = amountNumber;
+  if (supportsPanelEdit) detailsPayload.numberOfPanels = panelsNumber;
+
+  React.useEffect(() => {
+    setAmountValue(String(request?.totalAmount ?? ""));
+    setPanelsValue(String(request?.numberOfPanels ?? ""));
+  }, [requestId, request?.totalAmount, request?.numberOfPanels]);
 
   return (
     <View style={styles.requestCard}>
@@ -431,6 +533,57 @@ function RequestCard({
         )}
       </View>
 
+      {supportsAmountEdit || supportsPanelEdit ? (
+        <View style={styles.editDetailsPanel}>
+          <View style={styles.editDetailsHeader}>
+            <Text style={styles.editDetailsTitle}>Edit before approval</Text>
+            <Text style={styles.editDetailsHint}>Save changes before approving</Text>
+          </View>
+          <View style={styles.editableFieldsRow}>
+            {supportsAmountEdit ? (
+              <EditableField
+                icon="cash-outline"
+                label="Total amount (INR)"
+                value={amountValue}
+                onChangeText={setAmountValue}
+                keyboardType="decimal-pad"
+              />
+            ) : null}
+            {supportsPanelEdit ? (
+              <EditableField
+                icon="grid-outline"
+                label="Panels"
+                value={panelsValue}
+                onChangeText={setPanelsValue}
+                keyboardType="number-pad"
+              />
+            ) : null}
+          </View>
+          {hasUnsavedChanges ? (
+            <Text style={styles.unsavedChangesText}>
+              Save these changes before approving or rejecting this request.
+            </Text>
+          ) : null}
+          <Pressable
+            style={[
+              styles.saveDetailsButton,
+              !canSaveDetails && styles.disabledButton,
+            ]}
+            onPress={() => onSaveDetails(request, detailsPayload)}
+            disabled={!canSaveDetails}
+          >
+            {savingDetailsId === requestId ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="save-outline" size={15} color="#FFFFFF" />
+            )}
+            <Text style={styles.saveDetailsButtonText}>
+              {savingDetailsId === requestId ? "Saving details" : "Save details"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.photoAndDetailsRow}>
         {request?.requestType !== "solar-amc" && (
           <Pressable
@@ -501,7 +654,7 @@ function RequestCard({
         </View>
       </View>
 
-      {request?.requestType !== "solar-amc" && (
+      {supportsVisitPlan(request) ? (
         <View style={styles.visitPanel}>
           <View style={styles.visitPanelHeader}>
             <View>
@@ -517,6 +670,15 @@ function RequestCard({
               </Text>
             </View>
           </View>
+          {request?.requestType === "grow-cleaning" ? (
+            <Pressable
+              style={styles.editVisitsButton}
+              onPress={() => onEditVisits(request)}
+            >
+              <Ionicons name="create-outline" size={14} color={COLORS.brand} />
+              <Text style={styles.editVisitsButtonText}>Edit visit dates</Text>
+            </Pressable>
+          ) : null}
 
           <View style={styles.visitDatesRow}>
             {selectedVisits.length > 0 ? (
@@ -541,7 +703,7 @@ function RequestCard({
             {visitSummary.selectedVisits.length > 3 ? (
               <Pressable
                 onPress={() =>
-                  onOpenVisits && onOpenVisits(visitSummary.selectedVisits)
+                  onOpenVisits && onOpenVisits(visitSummary.selectedVisits, request)
                 }
                 style={styles.viewAllVisitsButton}
               >
@@ -550,7 +712,67 @@ function RequestCard({
             ) : null}
           </View>
         </View>
-      )}
+      ) : null}
+
+      {request?.requestType !== "complaint" ? (
+        <View style={styles.technicianActionsRow}>
+          <Pressable
+            style={[
+              styles.assignTechnicianButton,
+              (isRequestingTechnician || !canAssignTechnician) &&
+                styles.disabledButton,
+            ]}
+            onPress={() => onRequestTechnician(request)}
+            disabled={
+              Boolean(technicianRequestId) ||
+              !canAssignTechnician
+            }
+          >
+            {isRequestingTechnician ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons
+                name={
+                  hasRequestTechnician
+                    ? "checkmark-circle-outline"
+                    : "person-add-outline"
+                }
+                size={16}
+                color="#FFFFFF"
+              />
+            )}
+            <Text style={styles.assignTechnicianButtonText}>
+              {isRequestingTechnician
+                ? "Loading"
+                : hasRequestTechnician
+                  ? "Tech Assigned"
+                  : "Assign Tech"}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.viewTechnicianResponseButton,
+              !hasAssignedTechnician && styles.disabledButton,
+            ]}
+            onPress={() => onViewTechnicianResponses(request)}
+            disabled={!hasAssignedTechnician}
+          >
+            <Ionicons
+              name="chatbox-ellipses-outline"
+              size={16}
+              color={hasAssignedTechnician ? COLORS.brand : COLORS.faint}
+            />
+            <Text
+              style={[
+                styles.viewTechnicianResponseButtonText,
+                !hasAssignedTechnician && styles.disabledTechnicianActionText,
+              ]}
+            >
+              View Response
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.metaFooter}>
         <View style={styles.createdWrap}>
@@ -569,10 +791,11 @@ function RequestCard({
         <Pressable
           style={[
             styles.rejectButton,
-            isProcessingReject && styles.disabledButton,
+            (isProcessingReject || hasUnsavedChanges) &&
+              styles.disabledButton,
           ]}
           onPress={() => onReject(request)}
-          disabled={Boolean(processingId)}
+          disabled={Boolean(processingId) || hasUnsavedChanges}
         >
           {isProcessingReject ? (
             <ActivityIndicator color={COLORS.danger} size="small" />
@@ -589,10 +812,11 @@ function RequestCard({
         <Pressable
           style={[
             styles.approveButton,
-            isProcessingApprove && styles.disabledButton,
+            (isProcessingApprove || hasUnsavedChanges) &&
+              styles.disabledButton,
           ]}
           onPress={() => onApprove(request)}
-          disabled={Boolean(processingId)}
+          disabled={Boolean(processingId) || hasUnsavedChanges}
         >
           {isProcessingApprove ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
@@ -611,22 +835,46 @@ function RequestCard({
 }
 
 export default function AdminNewRequests() {
+  const routeParams = useLocalSearchParams();
+  const requestedRequestId = Array.isArray(routeParams.requestId)
+    ? routeParams.requestId[0]
+    : routeParams.requestId;
+  const requestedRequestType = Array.isArray(routeParams.requestType)
+    ? routeParams.requestType[0]
+    : routeParams.requestType;
+  const requestedServiceName = Array.isArray(routeParams.serviceName)
+    ? routeParams.serviceName[0]
+    : routeParams.serviceName;
   const [requests, setRequests] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [processingId, setProcessingId] = React.useState("");
+  const [technicianRequestId, setTechnicianRequestId] = React.useState("");
+  const [technicianPickerRequest, setTechnicianPickerRequest] =
+    React.useState(null);
+  const [technicians, setTechnicians] = React.useState([]);
+  const [isLoadingTechnicians, setIsLoadingTechnicians] = React.useState(false);
+  const [assigningTechnicianId, setAssigningTechnicianId] =
+    React.useState("");
+  const [technicianPickerError, setTechnicianPickerError] = React.useState("");
+  const [technicianResponseRequest, setTechnicianResponseRequest] =
+    React.useState(null);
+  const [technicianResponses, setTechnicianResponses] = React.useState([]);
+  const [isLoadingTechnicianResponses, setIsLoadingTechnicianResponses] =
+    React.useState(false);
+  const [savingDetailsId, setSavingDetailsId] = React.useState("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = React.useState("");
   const [rejectTarget, setRejectTarget] = React.useState(null);
   const [rejectReason, setRejectReason] = React.useState("");
   const [visitModalVisits, setVisitModalVisits] = React.useState([]);
+  const [visitModalRequest, setVisitModalRequest] = React.useState(null);
   const [isVisitModalVisible, setIsVisitModalVisible] = React.useState(false);
+  const [visitEditorRequest, setVisitEditorRequest] = React.useState(null);
+  const [visitCalendarInitialDate, setVisitCalendarInitialDate] =
+    React.useState(null);
+  const [visitEditorHasChanges, setVisitEditorHasChanges] = React.useState(false);
   
-  // User behavior tracking
-  const [behaviorModalVisible, setBehaviorModalVisible] = React.useState(false);
-  const [behaviorTarget, setBehaviorTarget] = React.useState(null);
-  const [selectedBehavior, setSelectedBehavior] = React.useState("");
-
   // New navigation states
   const [currentView, setCurrentView] = React.useState("categories"); // categories | list | detail
   const [selectedCategory, setSelectedCategory] = React.useState(null);
@@ -723,7 +971,9 @@ export default function AdminNewRequests() {
         setRequests(normalizedRequests);
       } catch (error) {
         setErrorMessage(error?.message || "Unable to load pending requests.");
-        setRequests([]);
+        if (!refreshing) {
+          setRequests([]);
+        }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -754,6 +1004,60 @@ export default function AdminNewRequests() {
     count: categorizedRequests[serviceName].length,
     requests: categorizedRequests[serviceName],
   }));
+
+  React.useEffect(() => {
+    if (
+      isLoading ||
+      (!requestedRequestId && !requestedServiceName && !requestedRequestType)
+    ) {
+      return;
+    }
+
+    const matchingRequest = requestedRequestId
+      ? requests.find(
+          (request) => String(getRequestId(request)) === String(requestedRequestId),
+        )
+      : null;
+
+    if (matchingRequest) {
+      setSelectedCategory(matchingRequest.serviceName || "Other Services");
+      setSelectedRequest(matchingRequest);
+      setSearchTerm("");
+      setCurrentView("detail");
+      return;
+    }
+
+    const normalizedTargets = [requestedServiceName, requestedRequestType]
+      .filter(Boolean)
+      .map((target) => target.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const matchingCategory = Object.keys(categorizedRequests).find(
+      (categoryName) => {
+        const normalizedCategory = categoryName
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+        return normalizedTargets.some(
+          (normalizedTarget) =>
+            normalizedCategory === normalizedTarget ||
+            normalizedCategory.includes(normalizedTarget) ||
+            normalizedTarget.includes(normalizedCategory),
+        );
+      },
+    );
+
+    if (matchingCategory) {
+      setSelectedCategory(matchingCategory);
+      setSelectedRequest(null);
+      setSearchTerm("");
+      setCurrentView("list");
+    }
+  }, [
+    categorizedRequests,
+    isLoading,
+    requestedRequestId,
+    requestedRequestType,
+    requestedServiceName,
+    requests,
+  ]);
 
   const filteredRequests = React.useMemo(() => {
     const baseRequests = selectedCategory
@@ -819,13 +1123,18 @@ export default function AdminNewRequests() {
       const payload = await response.json().catch(() => null);
 
 
-      if (!response.ok) {
+      if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || `Unable to ${actionKey} request.`);
       }
 
       setRequests((current) =>
-        current.filter((item) => getRequestId(item) !== requestId),
+        current.filter(
+          (item) => String(getRequestId(item)) !== String(requestId),
+        ),
       );
+      setSelectedRequest(null);
+      setCurrentView("list");
+      await fetchPendingRequests({ refreshing: true });
 
       Alert.alert(
         nextStatus === "approved" ? "Request approved" : "Request rejected",
@@ -840,15 +1149,11 @@ export default function AdminNewRequests() {
       setProcessingId("");
       setRejectTarget(null);
       setRejectReason("");
-      setBehaviorModalVisible(false);
-      setBehaviorTarget(null);
-      setSelectedBehavior("");
     }
   };
 
   const handleApprove = (request) => {
-    setBehaviorTarget(request);
-    setBehaviorModalVisible(true);
+    updateRequestStatus(request, "approved");
   };
 
   const handleReject = (request) => {
@@ -856,32 +1161,13 @@ export default function AdminNewRequests() {
     setRejectReason("");
   };
 
-  const submitApprove = () => {
-    if (!behaviorTarget || !selectedBehavior) {
-      Alert.alert("Select Behavior", "Please rate the user's behavior before approving.");
-      return;
-    }
-
-    updateRequestStatus(behaviorTarget, "approved", {
-      userBehavior: selectedBehavior,
-      userId: behaviorTarget.userId,
-    });
-  };
-
   const submitReject = () => {
     if (!rejectTarget) {
-      return;
-    }
-    
-    if (!selectedBehavior) {
-      Alert.alert("Select Behavior", "Please rate the user's behavior before rejecting.");
       return;
     }
 
     updateRequestStatus(rejectTarget, "rejected", {
       rejectionReason: rejectReason.trim(),
-      userBehavior: selectedBehavior,
-      userId: rejectTarget.userId,
     });
   };
 
@@ -929,6 +1215,316 @@ export default function AdminNewRequests() {
   const handleRequestSelect = (request) => {
     setSelectedRequest(request);
     setCurrentView("detail");
+  };
+
+  const handleSaveDetails = async (request, fields) => {
+    const requestId = getRequestId(request);
+    if (!requestId) {
+      Alert.alert("Missing request ID", "This request cannot be updated.");
+      return;
+    }
+
+    const currentStatus = getRequestStatus(request);
+    if (currentStatus && !["pending", "new"].includes(currentStatus)) {
+      Alert.alert(
+        "Request is no longer pending",
+        "Only pending requests can be edited.",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(fields.totalAmount) ||
+      fields.totalAmount < 0 ||
+      (fields.numberOfPanels !== undefined &&
+        (!Number.isInteger(fields.numberOfPanels) ||
+          fields.numberOfPanels < 1))
+    ) {
+      Alert.alert(
+        "Invalid details",
+        "Enter a valid amount and a panel count of at least 1.",
+      );
+      return;
+    }
+
+    const updatePayload = { ...fields };
+    if (request?.requestType === "electrical-amc") {
+      updatePayload.annualFee = fields.totalAmount;
+    }
+
+    setSavingDetailsId(requestId);
+    try {
+      const response = await safeFetch(
+        getApiUrl(`/api/admin/requests/${requestId}`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatePayload),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.message || "Unable to save request details.");
+      }
+
+      const applyUpdate = (item) =>
+        String(getRequestId(item)) === String(requestId)
+          ? { ...item, ...updatePayload }
+          : item;
+      setRequests((current) => current.map(applyUpdate));
+      setSelectedRequest((current) =>
+        current && String(getRequestId(current)) === String(requestId)
+          ? { ...current, ...updatePayload }
+          : current,
+      );
+      Alert.alert("Details saved", "The pending request has been updated.");
+    } catch (error) {
+      Alert.alert("Update failed", error?.message || "Please try again.");
+    } finally {
+      setSavingDetailsId("");
+    }
+  };
+
+  const handleRequestTechnician = async (request) => {
+    const requestId = getRequestId(request);
+    if (!requestId) {
+      Alert.alert("Missing request ID", "This request cannot be updated.");
+      return;
+    }
+
+    setTechnicianPickerRequest(request);
+    setTechnicianPickerError("");
+    setTechnicians([]);
+    setIsLoadingTechnicians(true);
+    setTechnicianRequestId(requestId);
+    try {
+      const response = await safeFetch(
+        getApiUrl("/api/admin/technicians"),
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(
+          payload?.message || "Unable to load technicians.",
+        );
+      }
+
+      setTechnicians(Array.isArray(payload.data) ? payload.data : []);
+    } catch (error) {
+      setTechnicianPickerError(
+        error?.message || "Unable to load technicians.",
+      );
+    } finally {
+      setIsLoadingTechnicians(false);
+      setTechnicianRequestId("");
+    }
+  };
+
+  const handleAssignTechnician = async (request, technician) => {
+    const requestId = String(getRequestId(request) || "");
+    const technicianId = String(
+      technician?._id || technician?.id || technician?.technicianId || "",
+    );
+    const technicianName = String(
+      technician?.name || technician?.fullName || technician?.username || "",
+    ).trim();
+    if (!/^[a-f\d]{24}$/i.test(requestId)) {
+      setTechnicianPickerError("This request has an invalid ID.");
+      return;
+    }
+    if (!/^[a-f\d]{24}$/i.test(technicianId) || !technicianName) {
+      setTechnicianPickerError("Select a valid active technician.");
+      return;
+    }
+
+    setAssigningTechnicianId(technicianId);
+    setTechnicianRequestId(requestId);
+    setTechnicianPickerError("");
+    try {
+      const response = await safeFetch(
+        getApiUrl(
+          `/api/admin/visits/${encodeURIComponent(
+            `${requestId}-inspection`,
+          )}/assign`,
+        ),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId,
+            visitIndex: -1,
+            assignedTechnicianId: technicianId,
+            assignedTechnicianName: technicianName,
+            assignmentStatus: "assigned",
+            status: "Pending",
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.message || "Unable to assign technician.");
+      }
+
+      const assignedAt =
+        payload?.data?.assignedAt || new Date().toISOString();
+      const updateRequest = (item) =>
+        String(getRequestId(item)) === requestId
+          ? {
+              ...item,
+              assignedTechnicianId: technicianId,
+              assignedTechnicianName: technicianName,
+              assignedAt,
+              assignmentStatus: "assigned",
+              inspectionStatus: "Pending",
+              technicianAssignmentRequested: false,
+            }
+          : item;
+      setRequests((current) => current.map(updateRequest));
+      setSelectedRequest((current) =>
+        current ? updateRequest(current) : current,
+      );
+      setTechnicianPickerRequest(null);
+      setTechnicianPickerError("");
+      Alert.alert(
+        "Technician assigned",
+        `${technicianName} was assigned for a pre-approval site inspection and can now see it under My Visits.`,
+      );
+    } catch (error) {
+      setTechnicianPickerError(
+        error?.message || "Unable to assign technician.",
+      );
+    } finally {
+      setAssigningTechnicianId("");
+      setTechnicianRequestId("");
+    }
+  };
+
+  const handleViewTechnicianResponses = async (request) => {
+    const assignedVisits = getAssignedRequestVisits(request);
+    if (assignedVisits.length === 0) {
+      Alert.alert(
+        "Technician not assigned",
+        "Assign a technician to this request before viewing responses.",
+      );
+      return;
+    }
+
+    const technicianIds = [
+      ...new Set(assignedVisits.map((visit) => String(visit.assignedTechnicianId))),
+    ];
+    setTechnicianResponseRequest(request);
+    setTechnicianResponses([]);
+    setIsLoadingTechnicianResponses(true);
+
+    try {
+      const responsesByTechnician = await Promise.all(
+        technicianIds.map(async (technicianId) => {
+          const response = await safeFetch(
+            getApiUrl(
+              `/api/admin/technicians?technicianId=${encodeURIComponent(technicianId)}`,
+            ),
+          );
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || payload?.success === false) {
+            throw new Error(
+              payload?.message || "Unable to load technician responses.",
+            );
+          }
+          return Array.isArray(payload?.data) ? payload.data : [];
+        }),
+      );
+      const requestId = String(getRequestId(request));
+      const responseVisits = responsesByTechnician
+        .flat()
+        .filter((visit) => String(visit?.requestId) === requestId);
+      setTechnicianResponses(responseVisits);
+      if (
+        responseVisits.some(
+          (visit) =>
+            Number(visit?.visitIndex) === -1 &&
+            String(visit?.status || "").toLowerCase() === "completed",
+        )
+      ) {
+        const markInspectionComplete = (item) =>
+          String(getRequestId(item)) === requestId
+            ? { ...item, inspectionStatus: "Completed" }
+            : item;
+        setRequests((current) => current.map(markInspectionComplete));
+        setSelectedRequest((current) =>
+          current ? markInspectionComplete(current) : current,
+        );
+      }
+    } catch (error) {
+      setTechnicianResponseRequest(null);
+      Alert.alert(
+        "Responses unavailable",
+        error?.message || "Unable to load technician responses.",
+      );
+    } finally {
+      setIsLoadingTechnicianResponses(false);
+    }
+  };
+
+  const updateLocalVisitDates = (requestId, selectedVisits = []) => {
+    const applyUpdate = (item) =>
+      String(getRequestId(item)) === String(requestId)
+        ? {
+            ...item,
+            consumerManagement: {
+              ...(item.consumerManagement || {}),
+              selectedVisits,
+            },
+          }
+        : item;
+    setRequests((current) => current.map(applyUpdate));
+    setSelectedRequest((current) =>
+      current && String(getRequestId(current)) === String(requestId)
+        ? applyUpdate(current)
+        : current,
+    );
+    setVisitEditorRequest((current) =>
+      current && String(getRequestId(current)) === String(requestId)
+        ? applyUpdate(current)
+        : current,
+    );
+  };
+
+  const closeVisitEditor = () => {
+    if (visitEditorHasChanges) {
+      Alert.alert(
+        "Close visit editor?",
+        "New dates not saved with the button will be discarded. Removed dates were saved immediately.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          {
+            text: "Close",
+            style: "destructive",
+            onPress: () => {
+              setVisitEditorRequest(null);
+              setVisitCalendarInitialDate(null);
+              setVisitEditorHasChanges(false);
+            },
+          },
+        ],
+      );
+      return;
+    }
+    setVisitEditorRequest(null);
+    setVisitCalendarInitialDate(null);
+  };
+
+  const openVisitCalendarFromList = (visit) => {
+    if (!visitModalRequest) {
+      Alert.alert(
+        "Request unavailable",
+        "This visit schedule is no longer available to edit.",
+      );
+      return;
+    }
+
+    setVisitEditorHasChanges(false);
+    setVisitCalendarInitialDate(visit?.date || null);
+    setVisitEditorRequest(visitModalRequest);
+    setIsVisitModalVisible(false);
   };
 
   const renderCategoriesView = () => (
@@ -1165,13 +1761,28 @@ export default function AdminNewRequests() {
 
         <RequestCard
           request={selectedRequest}
-          index={filteredRequests.indexOf(selectedRequest)}
+          index={filteredRequests.findIndex(
+            (request) =>
+              String(getRequestId(request)) ===
+              String(getRequestId(selectedRequest)),
+          )}
           processingId={processingId}
+          technicianRequestId={technicianRequestId}
+          onViewTechnicianResponses={handleViewTechnicianResponses}
+          savingDetailsId={savingDetailsId}
           onApprove={handleApprove}
           onReject={handleReject}
+          onSaveDetails={handleSaveDetails}
+          onRequestTechnician={handleRequestTechnician}
+          onEditVisits={(request) => {
+            setVisitEditorHasChanges(false);
+            setVisitCalendarInitialDate(null);
+            setVisitEditorRequest(request);
+          }}
           onOpenPhoto={(photoUrl) => setPreviewPhotoUrl(photoUrl || "")}
-          onOpenVisits={(visits) => {
+          onOpenVisits={(visits, request) => {
             setVisitModalVisits(Array.isArray(visits) ? visits : []);
+            setVisitModalRequest(request);
             setIsVisitModalVisible(true);
           }}
         />
@@ -1202,6 +1813,171 @@ export default function AdminNewRequests() {
       </ScrollView>
 
       <Modal
+        visible={Boolean(technicianPickerRequest)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!assigningTechnicianId) {
+            setTechnicianPickerRequest(null);
+            setTechnicianPickerError("");
+          }
+        }}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={styles.technicianPickerCard}>
+            <View style={styles.photoModalHeader}>
+              <View style={styles.technicianPickerHeading}>
+                <Text style={styles.photoModalTitle}>Assign a technician</Text>
+                <Text style={styles.technicianPickerSubtitle}>
+                  {technicianPickerRequest?.serviceName || "Service request"}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close technician list"
+                disabled={Boolean(assigningTechnicianId)}
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setTechnicianPickerRequest(null);
+                  setTechnicianPickerError("");
+                }}
+              >
+                <Ionicons name="close" size={18} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.technicianPickerHint}>
+              A pre-approval site inspection is optional. Assign a technician
+              if an inspection is needed; you can approve the request without
+              assigning one.
+            </Text>
+
+            {technicianPickerError ? (
+              <View style={styles.technicianPickerError}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={17}
+                  color={COLORS.danger}
+                />
+                <Text style={styles.technicianPickerErrorText}>
+                  {technicianPickerError}
+                </Text>
+              </View>
+            ) : null}
+
+            {isLoadingTechnicians ? (
+              <View style={styles.technicianPickerState}>
+                <ActivityIndicator color={COLORS.brand} />
+                <Text style={styles.technicianPickerStateText}>
+                  Loading active technicians...
+                </Text>
+              </View>
+            ) : technicians.length ? (
+              <ScrollView
+                style={styles.technicianPickerList}
+                keyboardShouldPersistTaps="handled"
+              >
+                {technicians.map((technician) => {
+                  const technicianId = String(
+                    technician?._id ||
+                      technician?.id ||
+                      technician?.technicianId ||
+                      "",
+                  );
+                  const isAssigning = assigningTechnicianId === technicianId;
+                  return (
+                    <Pressable
+                      key={technicianId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Assign to ${technician?.name || technician?.fullName || "technician"}`}
+                      accessibilityState={{
+                        disabled: Boolean(assigningTechnicianId),
+                      }}
+                      disabled={Boolean(assigningTechnicianId)}
+                      onPress={() =>
+                        handleAssignTechnician(
+                          technicianPickerRequest,
+                          technician,
+                        )
+                      }
+                      style={[
+                        styles.technicianOption,
+                        isAssigning && styles.technicianOptionSelected,
+                        assigningTechnicianId &&
+                          !isAssigning &&
+                          styles.disabledButton,
+                      ]}
+                    >
+                      <View style={styles.technicianAvatar}>
+                        <Ionicons
+                          name="person-outline"
+                          size={18}
+                          color={COLORS.brand}
+                        />
+                      </View>
+                      <View style={styles.technicianOptionInfo}>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.technicianOptionName}
+                        >
+                          {technician?.name ||
+                            technician?.fullName ||
+                            technician?.username ||
+                            "Technician"}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.technicianOptionMeta}
+                        >
+                          {[technician?.city, technician?.mobileNumber]
+                            .filter(Boolean)
+                            .join(" · ") || "Active technician"}
+                        </Text>
+                      </View>
+                      {isAssigning ? (
+                        <ActivityIndicator color={COLORS.brand} size="small" />
+                      ) : (
+                        <Ionicons
+                          name="chevron-forward"
+                          size={18}
+                          color={COLORS.faint}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : !isLoadingTechnicians && !technicianPickerError ? (
+              <View style={styles.technicianPickerState}>
+                <Ionicons
+                  name="people-outline"
+                  size={25}
+                  color={COLORS.faint}
+                />
+                <Text style={styles.technicianPickerStateText}>
+                  No active technicians are available.
+                </Text>
+              </View>
+            ) : null}
+
+            {technicianPickerError && technicians.length === 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={isLoadingTechnicians}
+                onPress={() =>
+                  technicianPickerRequest &&
+                  handleRequestTechnician(technicianPickerRequest)
+                }
+                style={styles.technicianPickerRetry}
+              >
+                <Text style={styles.technicianPickerRetryText}>Try again</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={Boolean(previewPhotoUrl)}
         transparent
         animationType="fade"
@@ -1227,6 +2003,108 @@ export default function AdminNewRequests() {
       </Modal>
 
       <Modal
+        visible={Boolean(technicianResponseRequest)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTechnicianResponseRequest(null)}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={styles.rejectModalCard}>
+            <View style={styles.photoModalHeader}>
+              <Text style={styles.photoModalTitle}>Technician responses</Text>
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setTechnicianResponseRequest(null)}
+              >
+                <Ionicons name="close" size={18} color={COLORS.text} />
+              </Pressable>
+            </View>
+            {isLoadingTechnicianResponses ? (
+              <View style={styles.technicianResponseState}>
+                <ActivityIndicator color={COLORS.brand} />
+                <Text style={styles.technicianResponseStateText}>
+                  Loading technician responses...
+                </Text>
+              </View>
+            ) : technicianResponses.length > 0 ? (
+              <ScrollView style={styles.visitListScroll}>
+                {technicianResponses.map((response, index) => {
+                  const isInspection =
+                    response?.isPreApprovalInspection === true ||
+                    Number(response?.visitIndex) === -1;
+                  return (
+                    <View
+                      key={`${response?.requestId}-${response?.visitIndex}-${index}`}
+                      style={styles.technicianResponseItem}
+                    >
+                      <Text style={styles.technicianResponseTitle}>
+                        {isInspection
+                          ? "Pre-approval site inspection"
+                          : `Visit ${Number(response?.visitIndex ?? index) + 1}`}
+                      </Text>
+                      <Text style={styles.technicianResponseMeta}>
+                        {isInspection
+                          ? "No schedule date"
+                          : formatDate(response?.dateOfVisit)}{" "}
+                        ·{" "}
+                        {response?.reviewStatus ||
+                          response?.status ||
+                          "Pending"}
+                      </Text>
+                      {response?.issueNote ? (
+                        <Text style={styles.technicianResponseNote}>
+                          {response.issueNote}
+                        </Text>
+                      ) : null}
+                      {response?.beforePhotoUrl || response?.afterPhotoUrl ? (
+                        <View style={styles.technicianResponsePhotos}>
+                          {[
+                            ["Before", response.beforePhotoUrl],
+                            ["After", response.afterPhotoUrl],
+                          ]
+                            .filter(([, photoUrl]) => photoUrl)
+                            .map(([label, photoUrl]) => (
+                              <Pressable
+                                key={label}
+                                onPress={() => setPreviewPhotoUrl(photoUrl)}
+                                style={styles.technicianResponsePhoto}
+                              >
+                                <Image
+                                  source={{ uri: photoUrl }}
+                                  style={styles.technicianResponseImage}
+                                />
+                                <Text style={styles.technicianResponsePhotoLabel}>
+                                  {label}
+                                </Text>
+                              </Pressable>
+                            ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.technicianResponseMeta}>
+                          No response submitted yet.
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.technicianResponseState}>
+                <Ionicons
+                  name="chatbox-ellipses-outline"
+                  size={24}
+                  color={COLORS.faint}
+                />
+                <Text style={styles.technicianResponseStateText}>
+                  No technician responses have been submitted yet.
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isVisitModalVisible}
         transparent
         animationType="fade"
@@ -1244,6 +2122,9 @@ export default function AdminNewRequests() {
               </Pressable>
             </View>
 
+            <Text style={styles.rejectHelpText}>
+              Select any visit date to open that month in the calendar.
+            </Text>
             <ScrollView style={styles.visitListScroll}>
               {visitModalVisits.length === 0 ? (
                 <View style={{ padding: 16 }}>
@@ -1251,7 +2132,13 @@ export default function AdminNewRequests() {
                 </View>
               ) : (
                 visitModalVisits.map((v, i) => (
-                  <View key={`visit-modal-${i}`} style={styles.visitListItem}>
+                  <Pressable
+                    key={`visit-modal-${i}`}
+                    style={styles.visitListItem}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open calendar for ${formatDate(v?.date)}`}
+                    onPress={() => openVisitCalendarFromList(v)}
+                  >
                     <Ionicons
                       name="calendar-outline"
                       size={16}
@@ -1260,9 +2147,70 @@ export default function AdminNewRequests() {
                     <Text style={styles.visitListText}>
                       {formatDate(v?.date)}
                     </Text>
-                  </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={15}
+                      color={COLORS.faint}
+                    />
+                  </Pressable>
                 ))
               )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(visitEditorRequest)}
+        transparent
+        animationType="slide"
+        onRequestClose={closeVisitEditor}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={styles.calendarEditModal}>
+            <View style={styles.photoModalHeader}>
+              <Text style={styles.photoModalTitle}>Edit visit dates</Text>
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={closeVisitEditor}
+              >
+                <Ionicons name="close" size={18} color={COLORS.text} />
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.calendarEditScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.visitEditorNotice}>
+                Added dates are saved with the button. Removing an existing date
+                saves that removal immediately.
+              </Text>
+              <CalenderVisit
+                previousData={{
+                  ...visitEditorRequest,
+                  selectedVisits: getVisitSummary(visitEditorRequest).selectedVisits,
+                }}
+                requestId={getRequestId(visitEditorRequest)}
+                initialDate={visitCalendarInitialDate}
+                serviceTitle={visitEditorRequest?.serviceName || "Service request"}
+                submitLabel="Save visit dates"
+                onDataChange={() => setVisitEditorHasChanges(true)}
+                onServerChange={({ selectedVisits }) =>
+                  updateLocalVisitDates(
+                    getRequestId(visitEditorRequest),
+                    selectedVisits,
+                  )
+                }
+                onModify={({ selectedVisits }) => {
+                  updateLocalVisitDates(
+                    getRequestId(visitEditorRequest),
+                    selectedVisits,
+                  );
+                  setVisitEditorRequest(null);
+                  setVisitCalendarInitialDate(null);
+                  setVisitEditorHasChanges(false);
+                }}
+              />
             </ScrollView>
           </View>
         </View>
@@ -1274,7 +2222,6 @@ export default function AdminNewRequests() {
         animationType="fade"
         onRequestClose={() => {
           setRejectTarget(null);
-          setSelectedBehavior("");
         }}
       >
         <View style={styles.photoModalOverlay}>
@@ -1285,7 +2232,6 @@ export default function AdminNewRequests() {
                 style={styles.modalCloseButton}
                 onPress={() => {
                   setRejectTarget(null);
-                  setSelectedBehavior("");
                 }}
               >
                 <Ionicons name="close" size={18} color={COLORS.text} />
@@ -1306,219 +2252,36 @@ export default function AdminNewRequests() {
               style={styles.rejectInput}
             />
 
-            <Text style={[styles.rejectHelpText, { marginTop: 12 }]}>
-              Rate user behavior (required)
-            </Text>
-
-            <View style={styles.behaviorGrid}>
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Good" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.successSoft, borderColor: COLORS.success },
-                ]}
-                onPress={() => setSelectedBehavior("Good")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Good" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.success}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.success }]}>Good</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Normal" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.blueSoft, borderColor: COLORS.blue },
-                ]}
-                onPress={() => setSelectedBehavior("Normal")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Normal" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.blue}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.blue }]}>Normal</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Severe" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.amberSoft, borderColor: COLORS.amber },
-                ]}
-                onPress={() => setSelectedBehavior("Severe")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Severe" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.amber}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.amber }]}>Severe</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Indisciplined" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger },
-                ]}
-                onPress={() => setSelectedBehavior("Indisciplined")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Indisciplined" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.danger}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.danger }]}>Indisciplined</Text>
-              </Pressable>
-            </View>
-
             <View style={styles.rejectModalActions}>
               <Pressable
                 style={styles.rejectCancelButton}
                 onPress={() => {
                   setRejectTarget(null);
-                  setSelectedBehavior("");
                 }}
+                disabled={Boolean(processingId)}
               >
                 <Text style={styles.rejectCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.rejectConfirmButton,
-                  !selectedBehavior && styles.disabledButton,
+                  processingId && styles.disabledButton,
                 ]}
                 onPress={submitReject}
-                disabled={!selectedBehavior}
+                disabled={Boolean(processingId)}
               >
-                <Text style={styles.rejectConfirmText}>Reject request</Text>
+                {processingId ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : null}
+                <Text style={styles.rejectConfirmText}>
+                  {processingId ? "Rejecting request" : "Reject request"}
+                </Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal
-        visible={behaviorModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setBehaviorModalVisible(false);
-          setSelectedBehavior("");
-        }}
-      >
-        <View style={styles.photoModalOverlay}>
-          <View style={styles.rejectModalCard}>
-            <View style={styles.photoModalHeader}>
-              <Text style={styles.photoModalTitle}>Approve request</Text>
-              <Pressable
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setBehaviorModalVisible(false);
-                  setSelectedBehavior("");
-                }}
-              >
-                <Ionicons name="close" size={18} color={COLORS.text} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.rejectHelpText}>
-              Rate the user&lsquo;s behavior before approving the request.
-            </Text>
-
-            <View style={styles.behaviorGrid}>
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Good" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.successSoft, borderColor: COLORS.success },
-                ]}
-                onPress={() => setSelectedBehavior("Good")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Good" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.success}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.success }]}>Good</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Normal" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.blueSoft, borderColor: COLORS.blue },
-                ]}
-                onPress={() => setSelectedBehavior("Normal")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Normal" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.blue}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.blue }]}>Normal</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Severe" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.amberSoft, borderColor: COLORS.amber },
-                ]}
-                onPress={() => setSelectedBehavior("Severe")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Severe" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.amber}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.amber }]}>Severe</Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.behaviorOption,
-                  selectedBehavior === "Indisciplined" && styles.behaviorOptionSelected,
-                  { backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger },
-                ]}
-                onPress={() => setSelectedBehavior("Indisciplined")}
-              >
-                <Ionicons
-                  name={selectedBehavior === "Indisciplined" ? "checkmark-circle" : "checkmark-circle-outline"}
-                  size={20}
-                  color={COLORS.danger}
-                />
-                <Text style={[styles.behaviorText, { color: COLORS.danger }]}>Indisciplined</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.rejectModalActions}>
-              <Pressable
-                style={styles.rejectCancelButton}
-                onPress={() => {
-                  setBehaviorModalVisible(false);
-                  setSelectedBehavior("");
-                }}
-              >
-                <Text style={styles.rejectCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.approveButton,
-                  !selectedBehavior && styles.disabledButton,
-                ]}
-                onPress={submitApprove}
-                disabled={!selectedBehavior}
-              >
-                <Text style={styles.approveButtonText}>Approve request</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1906,6 +2669,83 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 3,
   },
+  editDetailsPanel: {
+    marginTop: 11,
+    padding: 12,
+    borderRadius: 15,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  editDetailsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  editDetailsTitle: {
+    color: COLORS.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  editDetailsHint: {
+    color: COLORS.muted,
+    fontSize: 8,
+    fontWeight: "700",
+  },
+  editableFieldsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 9,
+  },
+  editableField: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  editableFieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  editableFieldLabel: {
+    color: COLORS.muted,
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  editableFieldInput: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "900",
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  unsavedChangesText: {
+    color: COLORS.amber,
+    fontSize: 8.5,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+  saveDetailsButton: {
+    minHeight: 38,
+    marginTop: 9,
+    borderRadius: 11,
+    backgroundColor: COLORS.brand,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  saveDetailsButtonText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "900",
+  },
   chipGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2034,10 +2874,68 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(101,126,234,0.16)",
   },
+  technicianActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  assignTechnicianButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    backgroundColor: COLORS.brand,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 8,
+  },
+  assignTechnicianButtonText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  viewTechnicianResponseButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+  },
+  viewTechnicianResponseButtonText: {
+    color: COLORS.brand,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  disabledTechnicianActionText: {
+    color: COLORS.faint,
+  },
   visitPanelHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  editVisitsButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 9,
+    backgroundColor: "#FFFFFF",
+    marginTop: 9,
+  },
+  editVisitsButtonText: {
+    color: COLORS.brand,
+    fontSize: 9,
+    fontWeight: "900",
   },
   visitTitle: {
     color: COLORS.text,
@@ -2111,6 +3009,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 13,
+  },
+  approvalGateNote: {
+    color: COLORS.amber,
+    fontSize: 10,
+    fontWeight: "700",
+    lineHeight: 15,
+    marginTop: 11,
   },
   rejectButton: {
     flex: 1,
@@ -2197,6 +3102,121 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: "hidden",
   },
+  technicianPickerCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    maxHeight: "78%",
+    overflow: "hidden",
+  },
+  technicianPickerHeading: { flex: 1, paddingRight: 10 },
+  technicianPickerSubtitle: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  technicianPickerHint: {
+    color: COLORS.muted,
+    fontSize: 10,
+    lineHeight: 15,
+    paddingHorizontal: 14,
+    paddingTop: 11,
+  },
+  technicianPickerError: {
+    alignItems: "center",
+    backgroundColor: COLORS.dangerSoft,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 7,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  technicianPickerErrorText: {
+    color: COLORS.danger,
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  technicianPickerState: {
+    alignItems: "center",
+    gap: 9,
+    justifyContent: "center",
+    minHeight: 130,
+    padding: 18,
+  },
+  technicianPickerStateText: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  technicianPickerList: { marginTop: 8, maxHeight: 380 },
+  technicianOption: {
+    alignItems: "center",
+    borderBottomColor: COLORS.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 65,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  technicianOptionSelected: { backgroundColor: COLORS.blueSoft },
+  technicianAvatar: {
+    alignItems: "center",
+    backgroundColor: COLORS.blueSoft,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  technicianOptionInfo: { flex: 1 },
+  technicianOptionName: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  technicianOptionMeta: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  technicianPickerRetry: {
+    alignSelf: "center",
+    backgroundColor: COLORS.brand,
+    borderRadius: 10,
+    marginBottom: 14,
+    marginTop: 5,
+    paddingHorizontal: 17,
+    paddingVertical: 9,
+  },
+  technicianPickerRetryText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  calendarEditModal: {
+    width: "100%",
+    maxHeight: "88%",
+    backgroundColor: COLORS.page,
+    borderRadius: 18,
+    overflow: "hidden",
+  },
+  calendarEditScroll: {
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  visitEditorNotice: {
+    color: COLORS.muted,
+    fontSize: 9,
+    lineHeight: 14,
+    fontWeight: "700",
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
   rejectHelpText: {
     color: COLORS.muted,
     fontSize: 10,
@@ -2245,8 +3265,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: 14,
     backgroundColor: COLORS.danger,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   rejectConfirmText: {
     color: "#FFFFFF",
@@ -2278,7 +3300,67 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  technicianResponseState: {
+    minHeight: 110,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 16,
+  },
+  technicianResponseStateText: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  technicianResponseItem: {
+    padding: 13,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginHorizontal: 12,
+    marginVertical: 5,
+  },
+  technicianResponseTitle: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  technicianResponseMeta: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  technicianResponseNote: {
+    color: COLORS.text,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+  },
+  technicianResponsePhotos: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+  technicianResponsePhoto: {
+    alignItems: "center",
+    gap: 4,
+  },
+  technicianResponseImage: {
+    width: 74,
+    height: 74,
+    borderRadius: 8,
+    backgroundColor: COLORS.border,
+  },
+  technicianResponsePhotoLabel: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "800",
+  },
   visitListText: {
+    flex: 1,
     color: COLORS.text,
     fontSize: 11,
     fontWeight: "800",
@@ -2469,32 +3551,6 @@ const styles = StyleSheet.create({
   listItemViewText: {
     color: COLORS.brand,
     fontSize: 10,
-    fontWeight: "900",
-  },
-  behaviorGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    paddingHorizontal: 14,
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  behaviorOption: {
-    width: "48%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  behaviorOptionSelected: {
-    borderWidth: 2,
-    transform: [{ scale: 1.02 }],
-  },
-  behaviorText: {
-    fontSize: 11,
     fontWeight: "900",
   },
 });

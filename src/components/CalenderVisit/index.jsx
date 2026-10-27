@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   PanResponder,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
 
 import { getApiUrl, safeFetch } from "../../constants/api";
 import { Fonts, Tokens } from "../../constants/theme";
+import { Alert } from "../StyledAlert";
 
 const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -180,6 +180,7 @@ function getMonthCalendar(year, month) {
 
 function CalenderVisit({
   previousData,
+  initialDate,
   compact = false,
   onDataChange,
   onModify,
@@ -344,6 +345,14 @@ function CalenderVisit({
       setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     }
   }, [externalSourceKey, previousData?.selectedVisits, resetKey, today]);
+
+  useEffect(() => {
+    const dateKey = dateKeyFromValue(initialDate);
+    if (!dateKey) return;
+
+    const [year, month] = dateKey.slice(0, 7).split("-").map(Number);
+    setCurrentMonth(new Date(year, month - 1, 1));
+  }, [initialDate]);
 
   /*
    * -------------------------------------------------------

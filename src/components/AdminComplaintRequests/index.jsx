@@ -4,7 +4,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Modal,
     Pressable,
@@ -18,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",

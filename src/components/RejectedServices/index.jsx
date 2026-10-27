@@ -5,7 +5,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   Modal,
@@ -20,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -78,6 +78,49 @@ function getInitials(name, email) {
   return source.slice(0, 2).toUpperCase();
 }
 
+function getRequestConsumerName(request) {
+  const name = [
+    request?.fullName,
+    request?.consumerName,
+    request?.customerName,
+    request?.userId?.fullName,
+    request?.userId?.username,
+    request?.userId?.name,
+  ].find((value) => typeof value === "string" && value.trim());
+
+  return name?.trim() || "Unknown";
+}
+
+function getRequestMobileNumber(request) {
+  return (
+    request?.mobileNumber ||
+    request?.primaryPhone ||
+    request?.whatsappNumber ||
+    request?.phoneNumber ||
+    "Not provided"
+  );
+}
+
+function getRequestAddress(request) {
+  return (
+    request?.address ||
+    request?.consumerAddress ||
+    request?.locationAddress ||
+    "Not provided"
+  );
+}
+
+function getRequestCity(request) {
+  return (
+    request?.city ||
+    request?.consumerCity ||
+    request?.cityName ||
+    (request?.address || request?.consumerAddress || request?.locationAddress
+      ? "See address"
+      : "Not provided")
+  );
+}
+
 function TextureLines({ tone = "light" }) {
   const color =
     tone === "dark" ? "rgba(255,255,255,0.15)" : "rgba(226,232,240,0.7)";
@@ -134,7 +177,7 @@ function FilterChip({ item, count, active, onPress }) {
 
 function ServiceListRow({ request, onViewDetails }) {
   const serviceName = request?.serviceName || request?.requestType || "Service";
-  const fullName = request?.fullName || request?.consumerName || "Unknown";
+  const fullName = getRequestConsumerName(request);
   const email = request?.email || "No email";
   const consumerNumber = request?.consumerNumber || request?.consumerNo || "N/A";
 
@@ -183,7 +226,7 @@ function ServiceListRow({ request, onViewDetails }) {
 
 function ServiceCard({ request, onReactivate, onDelete, onViewDetails, isProcessing }) {
   const serviceName = request?.serviceName || request?.requestType || "Service";
-  const fullName = request?.fullName || "Unknown";
+  const fullName = getRequestConsumerName(request);
   const email = request?.email || "No email";
   const consumerNumber = request?.consumerNumber || request?.consumerNo || "N/A";
   const rejectionReason = request?.rejectionReason || "No reason provided";
@@ -253,7 +296,7 @@ function ServiceCard({ request, onReactivate, onDelete, onViewDetails, isProcess
           soft={COLORS.successSoft}
         />
         <DetailPill
-          icon="solar-panel-outline"
+          icon="sunny-outline"
           label="Panels"
           value={String(request?.numberOfPanels || 0)}
           accent={COLORS.blue}
@@ -348,7 +391,9 @@ export default function RejectedServices() {
       setRequests(data);
     } catch (error) {
       setErrorMessage(error?.message || "Unable to load rejected services.");
-      setRequests([]);
+      if (!refreshing) {
+        setRequests([]);
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -450,10 +495,16 @@ export default function RejectedServices() {
 
       const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
+      if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || "Unable to reactivate service.");
       }
 
+      setRequests((current) =>
+        current.filter(
+          (item) => String(item?._id) !== String(request?._id),
+        ),
+      );
+      setSelectedRequest(null);
       await fetchRequests({ refreshing: true });
 
       Alert.alert(
@@ -481,10 +532,16 @@ export default function RejectedServices() {
 
       const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
+      if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || "Unable to delete service.");
       }
 
+      setRequests((current) =>
+        current.filter(
+          (item) => String(item?._id) !== String(request?._id),
+        ),
+      );
+      setSelectedRequest(null);
       await fetchRequests({ refreshing: true });
 
       Alert.alert(
@@ -554,12 +611,16 @@ export default function RejectedServices() {
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Full Name</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.fullName}</Text>
+              <Text style={styles.detailValue}>
+                {getRequestConsumerName(selectedRequest)}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Mobile Number</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.mobileNumber}</Text>
+                      <Text style={styles.detailValue}>
+                        {getRequestMobileNumber(selectedRequest)}
+                      </Text>
             </View>
 
             <View style={styles.detailRow}>
@@ -569,12 +630,16 @@ export default function RejectedServices() {
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Address</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.address}</Text>
+              <Text style={styles.detailValue}>
+                {getRequestAddress(selectedRequest)}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>City</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.city}</Text>
+              <Text style={styles.detailValue}>
+                {getRequestCity(selectedRequest)}
+              </Text>
             </View>
 
             {selectedRequest?.landmark && (

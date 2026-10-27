@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
 import { useAdminAuth } from "../../contexts/AdminAuthContext";
 import { useAuth } from "../../contexts/auth-context";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -469,7 +470,7 @@ function AdminHomeUI() {
     }).start();
   }, [revealAnim]);
 
-  const adminName = "Mr. Shahezad";
+  const adminName = "GROWMAX ENGINEERS";
   // session?.username?.trim() || session?.email?.split("@")?.[0] || "Admin";
 
   const revealStyle = {
@@ -482,6 +483,24 @@ function AdminHomeUI() {
         }),
       },
     ],
+  };
+
+  const handleLogoutPress = () => {
+    Alert.alert(
+      "Confirm Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: () => logout(),
+        },
+      ]
+    );
   };
 
   return (
@@ -503,6 +522,17 @@ function AdminHomeUI() {
             <View style={styles.headerButtons}>
               <Pressable
                 style={styles.headerIconButton}
+                onPress={() => router.push("/admin")}
+              >
+                <Ionicons
+                  name="checkmark-done-outline"
+                  size={20}
+                  color={COLORS.text}
+                />
+              </Pressable>
+
+              <Pressable
+                style={styles.headerIconButton}
                 onPress={() => router.push("/notifications")}
               >
                 <Ionicons
@@ -513,7 +543,7 @@ function AdminHomeUI() {
                 <View style={styles.notificationDot} />
               </Pressable>
 
-              <Pressable style={styles.logoutButton} onPress={logout}>
+              <Pressable style={styles.logoutButton} onPress={handleLogoutPress}>
                 <Ionicons
                   name="log-out-outline"
                   size={18}
@@ -736,7 +766,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "900",
     marginTop: 3,
   },

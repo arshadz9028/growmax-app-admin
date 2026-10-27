@@ -5,8 +5,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
+  Image,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -19,6 +20,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import { Alert } from "../StyledAlert";
 
 const COLORS = {
   page: "#EFF4FB",
@@ -44,13 +46,23 @@ const COLORS = {
 };
 
 const APPROVED_REQUESTS_API = "/api/admin/request?status=contacted";
+const REQUEST_DETAILS_API = (id) => `/api/admin/request/${encodeURIComponent(id)}`;
 const UPDATE_REQUEST_API = (id) => `/api/admin/request/${id}`;
 
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "grow-cleaning", label: "Solar Cleaning" },
-  { key: "solar-amc", label: "Solar AMC" },
-];
+const ALL_SERVICES_FILTER = { key: "all", label: "All" };
+
+function getServiceLabel(request) {
+  const serviceName = String(request?.serviceName || "").trim();
+  if (serviceName) return serviceName;
+
+  const labelsByType = {
+    "grow-cleaning": "Solar Cleaning",
+    "solar-amc": "Solar AMC",
+    "electrical-amc": "Electrical AMC",
+    complaint: "Complaints",
+  };
+  return labelsByType[request?.requestType] || "Other Services";
+}
 
 function formatDate(value) {
   if (!value) return "Not available";
@@ -77,9 +89,187 @@ function getInitials(name, email) {
   return source.slice(0, 2).toUpperCase();
 }
 
+function getRequestConsumerName(request) {
+  const name = [
+    request?.fullName,
+    request?.consumerName,
+    request?.customerName,
+    request?.userId?.fullName,
+    request?.userId?.username,
+    request?.userId?.name,
+  ].find((value) => typeof value === "string" && value.trim());
+
+  return name?.trim() || "Unknown";
+}
+
+function getRequestMobileNumber(request) {
+  return (
+    request?.mobileNumber ||
+    request?.primaryPhone ||
+    request?.whatsappNumber ||
+    request?.phoneNumber ||
+    "Not provided"
+  );
+}
+
+function getRequestAddress(request) {
+  return (
+    request?.address ||
+    request?.consumerAddress ||
+    request?.locationAddress ||
+    "Not provided"
+  );
+}
+
+function getRequestCity(request) {
+  return (
+    request?.city ||
+    request?.consumerCity ||
+    request?.cityName ||
+    (request?.address || request?.consumerAddress || request?.locationAddress
+      ? "See address"
+      : "Not provided")
+  );
+}
+
 function getVisitDates(request) {
   const visits = request?.consumerManagement?.selectedVisits || [];
   return visits.map((v) => formatDate(v?.date));
+}
+
+function formatDateTime(value) {
+  if (!value) return "Not submitted";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Not submitted";
+  return parsed.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getVisitStatusStyle(status) {
+  const value = String(status || "").toLowerCase();
+  if (value.includes("completed")) {
+    return { backgroundColor: COLORS.successSoft, color: COLORS.success };
+  }
+  if (value.includes("issue") || value.includes("pending")) {
+    return { backgroundColor: COLORS.amberSoft, color: COLORS.amber };
+  }
+  return { backgroundColor: COLORS.blueSoft, color: COLORS.blue };
+}
+
+function VisitResponsesSection({ request }) {
+  const visits =
+    request?.consumerManagement?.selectedVisits ||
+    request?.selectedVisits ||
+    [];
+
+  const openPhoto = (url) => {
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Unable to open photo", "Please check the photo URL."),
+    );
+  };
+
+  return (
+    <View style={styles.detailsCard}>
+      <Text style={styles.detailsSectionTitle}>
+        Visits ({visits.length})
+      </Text>
+      {visits.length ? (
+        visits.map((visit, index) => {
+          const status = visit?.status || "UpComing";
+          const statusStyle = getVisitStatusStyle(status);
+          const beforePhotoUrl = visit?.beforePhotoUrl || "";
+          const afterPhotoUrl = visit?.afterPhotoUrl || "";
+          const issueNote = String(visit?.issueNote || "").trim();
+
+          return (
+            <View
+              key={`${request?._id || "request"}-visit-${index}`}
+              style={styles.visitResponseCard}
+            >
+              <View style={styles.visitResponseHeader}>
+                <View>
+                  <Text style={styles.visitResponseTitle}>
+                    Visit {index + 1}
+                  </Text>
+                  <Text style={styles.visitResponseDate}>
+                    Scheduled: {formatDate(visit?.date)}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.visitStatusBadge,
+                    { backgroundColor: statusStyle.backgroundColor },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.visitStatusText,
+                      { color: statusStyle.color },
+                    ]}
+                  >
+                    {status}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.visitResponseMeta}>
+                Technician: {visit?.assignedTechnicianName || "Not assigned"}
+              </Text>
+              <Text style={styles.visitResponseMeta}>
+                Submitted: {formatDateTime(visit?.submittedAt)}
+              </Text>
+
+              {issueNote ? (
+                <View style={styles.visitIssueNote}>
+                  <Text style={styles.visitIssueLabel}>Technician response</Text>
+                  <Text style={styles.visitIssueText}>{issueNote}</Text>
+                </View>
+              ) : null}
+
+              {beforePhotoUrl || afterPhotoUrl ? (
+                <View style={styles.visitPhotosRow}>
+                  {[
+                    ["Before photo", beforePhotoUrl],
+                    ["After photo", afterPhotoUrl],
+                  ].map(([label, url]) =>
+                    url ? (
+                      <Pressable
+                        key={label}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${label.toLowerCase()}`}
+                        style={styles.visitPhotoTile}
+                        onPress={() => openPhoto(url)}
+                      >
+                        <Image
+                          source={{ uri: url }}
+                          style={styles.visitPhotoImage}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.visitPhotoLabel}>{label}</Text>
+                      </Pressable>
+                    ) : null,
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.noVisitResponse}>
+                  No photos or technician response submitted.
+                </Text>
+              )}
+            </View>
+          );
+        })
+      ) : (
+        <Text style={styles.noVisitResponse}>
+          No visits have been scheduled for this service.
+        </Text>
+      )}
+    </View>
+  );
 }
 
 function TextureLines({ tone = "light" }) {
@@ -138,7 +328,7 @@ function FilterChip({ item, count, active, onPress }) {
 
 function ServiceListRow({ request, onViewDetails }) {
   const serviceName = request?.serviceName || request?.requestType || "Service";
-  const fullName = request?.fullName || request?.consumerName || "Unknown";
+  const fullName = getRequestConsumerName(request);
   const email = request?.email || "No email";
   const consumerNumber =
     request?.consumerNumber || request?.consumerNo || "N/A";
@@ -204,7 +394,7 @@ function ServiceCard({
   isProcessing,
 }) {
   const serviceName = request?.serviceName || request?.requestType || "Service";
-  const fullName = request?.fullName || "Unknown";
+  const fullName = getRequestConsumerName(request);
   const email = request?.email || "No email";
   const consumerNumber =
     request?.consumerNumber || request?.consumerNo || "N/A";
@@ -368,6 +558,8 @@ export default function ApprovedServices() {
   const [modifyAmount, setModifyAmount] = React.useState("");
   const [modifyPanels, setModifyPanels] = React.useState("");
   const [selectedRequest, setSelectedRequest] = React.useState(null);
+  const [isLoadingRequestDetails, setIsLoadingRequestDetails] =
+    React.useState(false);
 
   const fetchRequests = React.useCallback(
     async ({ refreshing = false } = {}) => {
@@ -395,7 +587,9 @@ export default function ApprovedServices() {
         setRequests(data);
       } catch (error) {
         setErrorMessage(error?.message || "Unable to load approved services.");
-        setRequests([]);
+        if (!refreshing) {
+          setRequests([]);
+        }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -409,31 +603,41 @@ export default function ApprovedServices() {
   }, [fetchRequests]);
 
   const counts = React.useMemo(() => {
-    const all = requests.length;
-    const growCleaning = requests.filter(
-      (r) => r.requestType === "grow-cleaning",
-    ).length;
-    const solarAMC = requests.filter(
-      (r) => r.requestType === "solar-amc",
-    ).length;
+    const services = requests.reduce((totals, request) => {
+      const label = getServiceLabel(request);
+      if (label.toLowerCase() !== "completed") {
+        totals.set(label, (totals.get(label) || 0) + 1);
+      }
+      return totals;
+    }, new Map());
 
-    return { all, growCleaning, solarAMC };
+    return [...services.entries()]
+      .map(([label, count]) => ({ key: label, label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [requests]);
+
+  const serviceFilters = React.useMemo(
+    () => [ALL_SERVICES_FILTER, ...counts],
+    [counts],
+  );
 
   const filteredRequests = React.useMemo(() => {
     const query = searchText.trim().toLowerCase();
 
     return requests.filter((request) => {
-      if (activeFilter !== "all" && request.requestType !== activeFilter) {
+      if (
+        activeFilter !== "all" &&
+        getServiceLabel(request) !== activeFilter
+      ) {
         return false;
       }
 
       if (!query) return true;
 
       const searchable = [
-        request?.fullName,
+        getRequestConsumerName(request),
         request?.email,
-        request?.mobileNumber,
+        getRequestMobileNumber(request),
         request?.consumerNumber,
         request?.consumerNo,
         request?.serviceName,
@@ -472,19 +676,25 @@ export default function ApprovedServices() {
           body: JSON.stringify({
             status: "rejected",
             rejectionReason: rejectReason.trim(),
-            rejectedAt: new Date().toISOString(),
-            userBehavior: selectedBehavior,
-            userId: rejectModal.userId,
+            ...(rejectModal.userId
+              ? { userBehavior: selectedBehavior }
+              : {}),
           }),
         },
       );
 
       const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
+      if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || "Unable to reject service.");
       }
 
+      setRequests((current) =>
+        current.filter(
+          (request) => String(request?._id) !== String(rejectModal._id),
+        ),
+      );
+      setSelectedRequest(null);
       await fetchRequests({ refreshing: true });
       setRejectModal(null);
       setRejectReason("");
@@ -541,10 +751,22 @@ export default function ApprovedServices() {
 
       const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
+      if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || "Unable to modify service.");
       }
 
+      setRequests((current) =>
+        current.map((request) =>
+          String(request?._id) === String(modifyModal._id)
+            ? { ...request, totalAmount: amount, numberOfPanels: panels }
+            : request,
+        ),
+      );
+      setSelectedRequest((current) =>
+        current && String(current?._id) === String(modifyModal._id)
+          ? { ...current, totalAmount: amount, numberOfPanels: panels }
+          : current,
+      );
       await fetchRequests({ refreshing: true });
       setModifyModal(null);
       setModifyAmount("");
@@ -561,8 +783,42 @@ export default function ApprovedServices() {
     }
   };
 
-  const handleViewDetails = (request) => {
+  const handleViewDetails = async (request) => {
     setSelectedRequest(request);
+    setIsLoadingRequestDetails(true);
+    try {
+      const response = await safeFetch(
+        getApiUrl(REQUEST_DETAILS_API(request._id)),
+        { method: "GET" },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success || !payload?.data) {
+        throw new Error(
+          payload?.message || "Unable to refresh this service's visits.",
+        );
+      }
+
+      const latestRequest = payload.data;
+      setSelectedRequest((current) =>
+        String(current?._id) === String(latestRequest?._id)
+          ? latestRequest
+          : current,
+      );
+      setRequests((current) =>
+        current.map((item) =>
+          String(item?._id) === String(latestRequest?._id)
+            ? { ...item, ...latestRequest }
+            : item,
+        ),
+      );
+    } catch (error) {
+      Alert.alert(
+        "Visit responses not refreshed",
+        error?.message || "Please refresh and try again.",
+      );
+    } finally {
+      setIsLoadingRequestDetails(false);
+    }
   };
 
   const handleBackToList = () => {
@@ -661,14 +917,24 @@ export default function ApprovedServices() {
               <Pressable
                 style={styles.modalCancelButton}
                 onPress={() => setRejectModal(null)}
+                disabled={Boolean(processingId)}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={styles.modalConfirmButton}
+                style={[
+                  styles.modalConfirmButton,
+                  processingId && styles.disabledButton,
+                ]}
                 onPress={submitReject}
+                disabled={Boolean(processingId)}
               >
-                <Text style={styles.modalConfirmText}>Reject Service</Text>
+                {processingId ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : null}
+                <Text style={styles.modalConfirmText}>
+                  {processingId ? "Rejecting service" : "Reject Service"}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -726,6 +992,7 @@ export default function ApprovedServices() {
               <Pressable
                 style={styles.modalCancelButton}
                 onPress={() => setModifyModal(null)}
+                disabled={Boolean(processingId)}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
@@ -733,10 +1000,17 @@ export default function ApprovedServices() {
                 style={[
                   styles.modalConfirmButton,
                   { backgroundColor: COLORS.blue },
+                  processingId && styles.disabledButton,
                 ]}
                 onPress={submitModify}
+                disabled={Boolean(processingId)}
               >
-                <Text style={styles.modalConfirmText}>Save Changes</Text>
+                {processingId ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : null}
+                <Text style={styles.modalConfirmText}>
+                  {processingId ? "Saving changes" : "Save Changes"}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -797,14 +1071,14 @@ export default function ApprovedServices() {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Full Name</Text>
               <Text style={styles.detailValue}>
-                {selectedRequest?.fullName}
+                {getRequestConsumerName(selectedRequest)}
               </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Mobile Number</Text>
               <Text style={styles.detailValue}>
-                {selectedRequest?.mobileNumber}
+                {getRequestMobileNumber(selectedRequest)}
               </Text>
             </View>
 
@@ -815,12 +1089,16 @@ export default function ApprovedServices() {
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Address</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.address}</Text>
+              <Text style={styles.detailValue}>
+                {getRequestAddress(selectedRequest)}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>City</Text>
-              <Text style={styles.detailValue}>{selectedRequest?.city}</Text>
+              <Text style={styles.detailValue}>
+                {getRequestCity(selectedRequest)}
+              </Text>
             </View>
 
             {selectedRequest?.landmark && (
@@ -878,6 +1156,15 @@ export default function ApprovedServices() {
               </View>
             )}
           </View>
+          {isLoadingRequestDetails ? (
+            <View style={styles.detailsLoading}>
+              <ActivityIndicator color={COLORS.brand} />
+              <Text style={styles.detailsLoadingText}>
+                Refreshing visit responses...
+              </Text>
+            </View>
+          ) : null}
+          <VisitResponsesSection request={selectedRequest} />
         </ScrollView>
         {renderActionModals()}
       </SafeAreaView>
@@ -935,43 +1222,17 @@ export default function ApprovedServices() {
 
           <View style={styles.heroStatsRow}>
             <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.all}</Text>
+              <Text style={styles.heroStatValue}>{requests.length}</Text>
               <Text style={styles.heroStatLabel}>Total</Text>
             </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.growCleaning}</Text>
-              <Text style={styles.heroStatLabel}>Cleaning</Text>
-            </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{counts.solarAMC}</Text>
-              <Text style={styles.heroStatLabel}>AMC</Text>
-            </View>
+            {counts.map((service) => (
+              <View key={service.key} style={styles.heroStatCard}>
+                <Text style={styles.heroStatValue}>{service.count}</Text>
+                <Text style={styles.heroStatLabel}>{service.label}</Text>
+              </View>
+            ))}
           </View>
         </LinearGradient>
-
-        <View style={styles.statsGrid}>
-          <StatCard
-            label="Total Approved"
-            value={String(counts.all)}
-            icon="checkmark-circle-outline"
-            accent={COLORS.success}
-            soft={COLORS.successSoft}
-          />
-          <StatCard
-            label="Solar Cleaning"
-            value={String(counts.growCleaning)}
-            icon="sparkles-outline"
-            accent={COLORS.blue}
-            soft={COLORS.blueSoft}
-          />
-          <StatCard
-            label="Solar AMC"
-            value={String(counts.solarAMC)}
-            icon="shield-outline"
-            accent={COLORS.cyan}
-            soft={COLORS.cyanSoft}
-          />
-        </View>
 
         <View style={styles.toolbarCard}>
           <View style={styles.searchBox}>
@@ -995,16 +1256,15 @@ export default function ApprovedServices() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterList}
           >
-            {FILTERS.map((filter) => (
+            {serviceFilters.map((filter) => (
               <FilterChip
                 key={filter.key}
                 item={filter}
                 count={
                   filter.key === "all"
                     ? requests.length
-                    : filter.key === "grow-cleaning"
-                      ? counts.growCleaning
-                      : counts.solarAMC
+                    : counts.find((service) => service.key === filter.key)
+                        ?.count || 0
                 }
                 active={activeFilter === filter.key}
                 onPress={() => setActiveFilter(filter.key)}
@@ -1167,11 +1427,14 @@ const styles = StyleSheet.create({
   },
   heroStatsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 18,
   },
   heroStatCard: {
-    flex: 1,
+    flexBasis: "28%",
+    flexGrow: 1,
+    minWidth: 72,
     borderRadius: 12,
     padding: 10,
     backgroundColor: "rgba(255,255,255,0.13)",
@@ -1185,9 +1448,10 @@ const styles = StyleSheet.create({
   },
   heroStatLabel: {
     color: "rgba(255,255,255,0.72)",
-    fontSize: 8.75,
+    fontSize: 8,
     fontWeight: "700",
     marginTop: 3,
+    lineHeight: 11,
   },
   statsGrid: {
     flexDirection: "row",
@@ -1662,8 +1926,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: 14,
     backgroundColor: COLORS.danger,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   modalConfirmText: {
     color: "#FFFFFF",
@@ -1728,6 +1994,117 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     maxWidth: "60%",
     textAlign: "right",
+  },
+  detailsLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  detailsLoadingText: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  visitResponseCard: {
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  visitResponseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 8,
+  },
+  visitResponseTitle: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  visitResponseDate: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  visitStatusBadge: {
+    maxWidth: "52%",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  visitStatusText: {
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "capitalize",
+  },
+  visitResponseMeta: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  visitIssueNote: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: COLORS.amberSoft,
+    borderRadius: 10,
+  },
+  visitIssueLabel: {
+    color: COLORS.amber,
+    fontSize: 9,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  visitIssueText: {
+    color: COLORS.text,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
+  },
+  visitPhotosRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 9,
+    marginTop: 10,
+  },
+  visitPhotoTile: {
+    width: "48%",
+    padding: 5,
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  visitPhotoImage: {
+    width: "100%",
+    height: 100,
+    borderRadius: 7,
+    backgroundColor: COLORS.border,
+  },
+  visitPhotoLabel: {
+    color: COLORS.brand,
+    fontSize: 9,
+    fontWeight: "900",
+    textAlign: "center",
+    paddingVertical: 5,
+  },
+  noVisitResponse: {
+    color: COLORS.muted,
+    fontSize: 9,
+    lineHeight: 14,
+    fontWeight: "700",
   },
 
   // detailRow: {

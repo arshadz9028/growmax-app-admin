@@ -2,7 +2,6 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    Alert,
     Dimensions,
     Image,
     Modal,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 import growNew from "../../../assets/images/grow_new.jpeg";
 import { useAuth } from "../../contexts/auth-context";
+import { Alert } from "../StyledAlert";
 const { width } = Dimensions.get("window");
 
 const colors = {

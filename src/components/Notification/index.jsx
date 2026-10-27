@@ -3,7 +3,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Pressable,
     RefreshControl,
@@ -14,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiUrl, safeFetch } from "../../constants/api";
+import { Alert } from "../StyledAlert";
 
 const C = {
   page: "#EFF4FB",
@@ -34,8 +34,54 @@ const C = {
   amberSoft: "#FFFBEB",
   red: "#EF4444",
   redSoft: "#FEF2F2",
+  purple: "#8B5CF6",
+  purpleSoft: "#F5F3FF",
+  cyan: "#06B6D4",
+  cyanSoft: "#ECFEFF",
 };
 const NOTIFICATIONS_API_PATH = "/api/notifications/admin";
+const SERVICE_COLORS = {
+  cleaning: {
+    icon: "water-outline",
+    color: C.cyan,
+    soft: C.cyanSoft,
+    card: "#F2FCFE",
+    border: "#A5F3FC",
+    label: "Cleaning",
+  },
+  cleaningAmc: {
+    icon: "leaf-outline",
+    color: C.green,
+    soft: C.greenSoft,
+    card: "#F0FDF4",
+    border: "#BBF7D0",
+    label: "Cleaning AMC",
+  },
+  solar: {
+    icon: "sunny-outline",
+    color: C.amber,
+    soft: C.amberSoft,
+    card: "#FFFCF2",
+    border: "#FDE68A",
+    label: "Solar",
+  },
+  solarAmc: {
+    icon: "sunny-outline",
+    color: C.blue,
+    soft: C.blueSoft,
+    card: "#F5F7FF",
+    border: "#C7D2FE",
+    label: "Solar AMC",
+  },
+  electrical: {
+    icon: "flash-outline",
+    color: C.purple,
+    soft: C.purpleSoft,
+    card: "#FAF8FF",
+    border: "#DDD6FE",
+    label: "Electrical",
+  },
+};
 
 function relativeTime(value) {
   const seconds = Math.max(0, (Date.now() - new Date(value).getTime()) / 1000);
@@ -48,13 +94,52 @@ function relativeTime(value) {
     month: "short",
   });
 }
+function getServiceMeta(notification) {
+  const data = notification?.data || {};
+  const service = `${data.requestType || ""} ${data.serviceName || ""}`
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (service.includes("solar amc")) return SERVICE_COLORS.solarAmc;
+  if (service.includes("cleaning") && service.includes("amc")) {
+    return SERVICE_COLORS.cleaningAmc;
+  }
+  if (service.includes("cleaning")) return SERVICE_COLORS.cleaning;
+  if (service.includes("electrical")) return SERVICE_COLORS.electrical;
+  if (service.includes("solar")) return SERVICE_COLORS.solar;
+
+  return null;
+}
+
 function typeMeta(notification) {
   const action = notification?.data?.action || "";
+  const serviceMeta = getServiceMeta(notification);
+
+  if (serviceMeta) {
+    return {
+      ...serviceMeta,
+      icon:
+        action === "view-visit"
+          ? "images-outline"
+          : action === "view-request"
+            ? "document-text-outline"
+            : serviceMeta.icon,
+      label:
+        action === "view-visit"
+          ? "Visit response"
+          : action === "view-request"
+            ? "Service request"
+            : serviceMeta.label,
+    };
+  }
+
   if (action === "view-visit")
     return {
       icon: "images-outline",
       color: C.green,
       soft: C.greenSoft,
+      card: "#F0FDF4",
+      border: "#BBF7D0",
       label: "Visit response",
     };
   if (action === "view-request")
@@ -62,6 +147,8 @@ function typeMeta(notification) {
       icon: "document-text-outline",
       color: C.blue,
       soft: C.blueSoft,
+      card: "#F5F7FF",
+      border: "#C7D2FE",
       label: "Service request",
     };
   if (notification?.type === "payment")
@@ -69,71 +156,122 @@ function typeMeta(notification) {
       icon: "card-outline",
       color: C.amber,
       soft: C.amberSoft,
+      card: "#FFFCF2",
+      border: "#FDE68A",
       label: "Payment",
     };
   if (notification?.type === "approval")
     return {
       icon: "checkmark-circle-outline",
-      color: C.green,
-      soft: C.greenSoft,
+      color: C.purple,
+      soft: C.purpleSoft,
+      card: "#FAF8FF",
+      border: "#DDD6FE",
       label: "Approval",
+    };
+  if (notification?.type === "complaint")
+    return {
+      icon: "alert-circle-outline",
+      color: C.red,
+      soft: C.redSoft,
+      card: "#FFF7F7",
+      border: "#FECACA",
+      label: "Complaint",
+    };
+  if (notification?.type === "order")
+    return {
+      icon: "cube-outline",
+      color: C.cyan,
+      soft: C.cyanSoft,
+      card: "#F2FCFE",
+      border: "#A5F3FC",
+      label: "Order",
+    };
+  if (notification?.type === "service")
+    return {
+      icon: "construct-outline",
+      color: C.blue,
+      soft: C.blueSoft,
+      card: "#F5F7FF",
+      border: "#C7D2FE",
+      label: "Service",
     };
   if (notification?.type === "system")
     return {
       icon: "settings-outline",
       color: C.muted,
       soft: C.alt,
+      card: "#F8FAFC",
+      border: "#CBD5E1",
       label: "System",
     };
   return {
     icon: "notifications-outline",
     color: C.brand,
     soft: C.blueSoft,
+    card: "#F3F8FA",
+    border: "#B6D2DA",
     label: "Update",
   };
 }
-function responseTags(notification) {
-  const data = notification?.data || {};
-  return [
-    { label: data?.serviceName, icon: "construct-outline" },
-    { label: data?.technicianName, icon: "person-outline" },
-    { label: data?.status, icon: "ellipse", status: true },
-    {
-      label: data?.issueNote ? "Issue reported" : "",
-      icon: "alert-circle-outline",
-      danger: true,
-    },
-  ].filter((x) => x.label);
-}
 function NotificationCard({ item, onOpen, onToggle, busy }) {
-  const meta = typeMeta(item),
-    data = item.data || {},
-    tags = responseTags(item);
+  const meta = typeMeta(item);
+  const data = item.data || {};
+
   return (
     <Pressable
-      style={[s.card, !item.isRead && s.cardUnread]}
+      style={[
+        s.card,
+        { backgroundColor: meta.card, borderColor: meta.border },
+        !item.isRead && s.cardUnread,
+      ]}
       onPress={() => onOpen(item)}
       disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={`${meta.label}: ${item.title}. ${item.message}`}
     >
       <View style={[s.typeRail, { backgroundColor: meta.color }]} />
-      <View style={s.row}>
+      <View style={s.cardRow}>
         <View style={[s.iconWrap, { backgroundColor: meta.soft }]}>
-          <Ionicons name={meta.icon} size={20} color={meta.color} />
+          <Ionicons name={meta.icon} size={17} color={meta.color} />
         </View>
-        <View style={s.flex}>
-          <View style={s.row}>
+        <View style={s.cardContent}>
+          <View style={s.titleRow}>
             <Text style={s.cardTitle} numberOfLines={1}>
               {item.title}
             </Text>
-            {!item.isRead ? <View style={s.unreadDot} /> : null}
+            {!item.isRead ? (
+              <View style={[s.unreadDot, { backgroundColor: meta.color }]} />
+            ) : null}
           </View>
-          <Text style={s.time}>
-            {relativeTime(item.createdAt)} · {meta.label}
-          </Text>
+          <View style={s.summaryRow}>
+            <Text style={s.message} numberOfLines={1} ellipsizeMode="tail">
+              {item.message}
+            </Text>
+            {data.beforePhotoUrl ? (
+              <Image
+                source={{ uri: data.beforePhotoUrl }}
+                style={s.previewImage}
+                accessibilityLabel="Before photo attached"
+              />
+            ) : null}
+            {data.afterPhotoUrl ? (
+              <Image
+                source={{ uri: data.afterPhotoUrl }}
+                style={s.previewImage}
+                accessibilityLabel="After photo attached"
+              />
+            ) : null}
+            <Text style={s.time}>{relativeTime(item.createdAt)}</Text>
+          </View>
         </View>
         <Pressable
           style={s.readToggle}
           hitSlop={9}
+          accessibilityRole="button"
+          accessibilityLabel={
+            item.isRead ? "Mark notification as unread" : "Mark notification as read"
+          }
           onPress={(event) => {
             event.stopPropagation();
             onToggle(item);
@@ -148,58 +286,6 @@ function NotificationCard({ item, onOpen, onToggle, busy }) {
             color={C.muted}
           />
         </Pressable>
-      </View>
-      <Text style={s.message}>{item.message}</Text>
-      {tags.length ? (
-        <View style={s.tags}>
-          {tags.map((tag, index) => (
-            <View
-              key={`${tag.label}-${index}`}
-              style={[s.tag, tag.danger && s.tagDanger]}
-            >
-              <Ionicons
-                name={tag.icon}
-                size={12}
-                color={tag.danger ? C.red : C.brand}
-              />
-              <Text style={[s.tagText, tag.danger && s.tagDangerText]}>
-                {tag.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {data.beforePhotoUrl || data.afterPhotoUrl ? (
-        <View style={s.photoPreview}>
-          {data.beforePhotoUrl ? (
-            <Image
-              source={{ uri: data.beforePhotoUrl }}
-              style={s.previewImage}
-            />
-          ) : null}
-          {data.afterPhotoUrl ? (
-            <Image
-              source={{ uri: data.afterPhotoUrl }}
-              style={s.previewImage}
-            />
-          ) : null}
-          <Text style={s.previewText}>Photos attached</Text>
-        </View>
-      ) : null}
-      <View style={s.cardFooter}>
-        <Text style={[s.readState, !item.isRead && s.readStateUnread]}>
-          {item.isRead ? "Read" : "New"}
-        </Text>
-        <View style={s.openAction}>
-          <Text style={s.openText}>
-            {data.action === "view-visit"
-              ? "Review response"
-              : data.action === "view-request"
-                ? "View request"
-                : "Open notification"}
-          </Text>
-          <Ionicons name="arrow-forward" size={15} color={C.brand} />
-        </View>
       </View>
     </Pressable>
   );
@@ -523,31 +609,52 @@ const s = StyleSheet.create({
     backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 17,
-    padding: 14,
-    marginBottom: 11,
+    borderRadius: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    marginBottom: 8,
     overflow: "hidden",
   },
-  cardUnread: { borderColor: "#B8D9CC", backgroundColor: "#FCFFFD" },
+  cardUnread: { borderWidth: 1.5 },
   typeRail: {
     position: "absolute",
-    width: 4,
+    width: 3,
     left: 0,
-    top: 14,
-    bottom: 14,
+    top: 9,
+    bottom: 9,
     borderTopRightRadius: 5,
     borderBottomRightRadius: 5,
   },
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  cardContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
   iconWrap: {
-    height: 40,
-    width: 40,
-    borderRadius: 13,
+    height: 33,
+    width: 33,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
   cardTitle: {
     color: C.text,
-    fontSize: 11.5,
+    fontSize: 10.5,
     fontWeight: "900",
     flexShrink: 1,
   },
@@ -557,70 +664,35 @@ const s = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: C.brand,
     marginLeft: 6,
-    marginTop: 5,
   },
-  time: { color: C.muted, fontSize: 9, fontWeight: "800", marginTop: 3 },
+  time: {
+    color: C.muted,
+    fontSize: 8,
+    fontWeight: "800",
+    flexShrink: 0,
+  },
   readToggle: {
-    height: 31,
-    width: 31,
-    borderRadius: 10,
+    height: 27,
+    width: 27,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: C.alt,
   },
   message: {
     color: C.text,
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 9,
+    lineHeight: 12,
     fontWeight: "600",
-    marginTop: 12,
-  },
-  tags: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
-  tag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: C.greenSoft,
-    borderRadius: 99,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-  },
-  tagDanger: { backgroundColor: C.redSoft },
-  tagText: { color: C.brand, fontSize: 8.5, fontWeight: "800" },
-  tagDangerText: { color: C.red },
-  photoPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 11,
+    flex: 1,
+    minWidth: 0,
   },
   previewImage: {
-    height: 36,
-    width: 36,
-    borderRadius: 8,
+    height: 18,
+    width: 18,
+    borderRadius: 5,
     backgroundColor: C.alt,
   },
-  previewText: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: "800",
-    marginLeft: 2,
-  },
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 13,
-  },
-  readState: {
-    color: C.muted,
-    fontSize: 8.5,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  readStateUnread: { color: C.brand },
-  openAction: { flexDirection: "row", alignItems: "center", gap: 3 },
-  openText: { color: C.brand, fontSize: 9.5, fontWeight: "900" },
   state: {
     backgroundColor: C.surface,
     borderWidth: 1,

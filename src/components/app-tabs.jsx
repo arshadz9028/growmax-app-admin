@@ -48,21 +48,36 @@ export default function AppTabs() {
           ),
         }}
       />
-      
-       <Tabs.Screen
-        name="admin"
+
+      <Tabs.Screen
+        name="dashboard"
         options={{
-          title: "Tasks",
+          title: "Dashboard",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "options" : "options-outline"}
+              name={focused ? "grid" : "grid-outline"}
               size={24}
               color={focused ? backgrndClr1 : color}
             />
           ),
         }}
       />
-      {/* <Tabs.Screen
+      
+       {/* Tasks moved to the home header action button */}
+       {/* <Tabs.Screen
+         name="admin"
+         options={{
+           title: "Tasks",
+           tabBarIcon: ({ color, focused }) => (
+             <Ionicons
+               name={focused ? "options" : "options-outline"}
+               size={24}
+               color={focused ? backgrndClr1 : color}
+             />
+           ),
+         }}
+       /> */}
+       {/* <Tabs.Screen
         name="login"
         options={{
           title: "Requests",
@@ -112,8 +127,8 @@ export default function AppTabs() {
       <Tabs.Screen name="notifications" options={hiddenScreenOptions} />
       <Tabs.Screen name="approved-services" options={hiddenScreenOptions} />
       <Tabs.Screen name="rejected-services" options={hiddenScreenOptions} />
+      <Tabs.Screen name="admin" options={hiddenScreenOptions} />
       {/* <Tabs.Screen name="grow-cleaning" options={hiddenScreenOptions} />
-      <Tabs.Screen name="service-schedule" options={hiddenScreenOptions} />
       <Tabs.Screen name="solar-services" options={hiddenScreenOptions} />
       <Tabs.Screen name="solar-amc" options={hiddenScreenOptions} />
       <Tabs.Screen name="electrical-amc" options={hiddenScreenOptions} />

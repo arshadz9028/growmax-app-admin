@@ -4,6 +4,7 @@ import { useColorScheme } from "react-native";
 import { AnimatedSplashOverlay } from "../components/animated-icon";
 import AppTabs from "../components/app-tabs";
 import LoginComponent from "../components/LoginComponent";
+import { StyledAlertHost } from "../components/StyledAlert";
 import { AdminAuthProvider, useAdminAuth } from "../contexts/AdminAuthContext";
 import { AuthProvider } from "../contexts/auth-context";
 
@@ -25,6 +26,7 @@ export default function RootLayout() {
         <AuthProvider>
           <AnimatedSplashOverlay />
           <AdminAppGate />
+          <StyledAlertHost />
         </AuthProvider>
       </AdminAuthProvider>
     </ThemeProvider>
